@@ -93,3 +93,16 @@ jobs:
         with:
           releaseId: ${{ needs.resolve.outputs.release_id }}
           args: ${{ matrix.args }}
+
+      - name: Upload portable Windows exe
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "${{ inputs.tag }}"
+          $version = $tag -replace '^v', ''
+          $src = "src-tauri/target/release/minecraft-mod-like-im-five.exe"
+          $dst = "Minecraft.Mods.Easy_${version}_x64-portable.exe"
+          Copy-Item $src $dst
+          gh release upload $tag $dst -R ${{ github.repository }}
