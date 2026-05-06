@@ -1,0 +1,79 @@
+version: 1
+
+# Curated profiles. Each profile pins an MC version because content mods
+# lag the latest release by months — pinning means "Update" upgrades mods
+# *within* this MC version and never silently breaks the kid's setup.
+#
+# To add a profile, copy one and change the slugs. The Modrinth slug is
+# the last segment of the project's URL (modrinth.com/mod/<slug>).
+
+profiles:
+  - id: latest-beautiful
+    name: Latest & Beautiful
+    short_description: Newest stable Minecraft with shaders and smooth performance
+    minecraft_version: "1.21.9"
+    loader: fabric
+    color: "#7c4dff"
+    accent: shaders
+    mods:
+      - { source: modrinth, slug: fabric-api,             role: required }
+      - { source: modrinth, slug: sodium,                 role: performance }
+      - { source: modrinth, slug: iris,                   role: shaders }
+      - { source: modrinth, slug: lithium,                role: performance }
+      - { source: modrinth, slug: indium,                 role: compat }
+      - { source: modrinth, slug: sodium-extra,           role: performance }
+      - { source: modrinth, slug: reeses-sodium-options,  role: ui }
+      - { source: modrinth, slug: modmenu,                role: ui }
+      - { source: modrinth, slug: yacl,                   role: required }
+      - { source: modrinth, slug: lambdynamiclights,      role: visual }
+      - { source: modrinth, slug: continuity,             role: visual }
+    shaders:
+      - { source: modrinth, slug: complementary-reimagined, default: true }
+    resource_packs:
+      - { source: modrinth, slug: faithful-32x, default: true }
+
+  - id: performance-edge
+    name: Bleeding Edge Performance
+    short_description: Always the latest Minecraft release — auto-resolves at install
+    minecraft_version: latest  # sentinel; resolved from Mojang manifest each install
+    loader: fabric
+    color: "#00bfa5"
+    accent: speed
+    mods:
+      - { source: modrinth, slug: fabric-api,             role: required }
+      - { source: modrinth, slug: sodium,                 role: performance }
+      - { source: modrinth, slug: sodium-extra,           role: performance }
+      - { source: modrinth, slug: reeses-sodium-options,  role: ui }
+      - { source: modrinth, slug: lithium,                role: performance }
+      - { source: modrinth, slug: ferrite-core,           role: performance }
+      - { source: modrinth, slug: entityculling,          role: performance }
+      - { source: modrinth, slug: immediatelyfast,        role: performance }
+      - { source: modrinth, slug: modernfix,              role: performance }
+      - { source: modrinth, slug: iris,                   role: shaders }
+      - { source: modrinth, slug: yacl,                   role: required }
+      - { source: modrinth, slug: modmenu,                role: ui }
+      - { source: modrinth, slug: jei,                    role: ui }
+      - { source: modrinth, slug: jade,                   role: ui }
+      - { source: modrinth, slug: xaeros-minimap,         role: ui }
+      - { source: modrinth, slug: appleskin,              role: ui }
+      - { source: modrinth, slug: continuity,             role: visual }
+      - { source: modrinth, slug: lambdynamiclights,      role: visual }
+    resource_packs:
+      - { source: modrinth, slug: faithful-32x, default: true }
+
+  - id: adventure-content
+    name: Adventure with Cobblemon and Create
+    short_description: Pokémon-style creatures, mechanical contraptions, exploration
+    minecraft_version: "1.21.1"
+    loader: neoforge
+    color: "#ff6f00"
+    accent: adventure
+    not_implemented_in_phase_1: true  # NeoForge installer path is phase 2
+    mods:
+      - { source: modrinth, slug: cobblemon,        role: content }
+      - { source: modrinth, slug: create,           role: content }
+      - { source: modrinth, slug: jei,              role: ui }
+      - { source: modrinth, slug: jade,             role: ui }
+      - { source: modrinth, slug: xaeros-minimap,   role: ui }
+      - { source: modrinth, slug: appleskin,        role: ui }
+      - { source: modrinth, slug: geckolib,         role: required }

@@ -1,0 +1,54 @@
+# Cross-compile a Windows .exe from a Linux container using cargo-xwin.
+#
+# One-shot build. Output lands at ./dist/minecraft-mod-like-im-five.exe.
+#
+#   docker build -f Dockerfile.build-exe -o dist .
+#
+# (or use scripts/build-exe.ps1 / scripts/build-exe.sh)
+
+# -- builder stage ------------------------------------------------------------
+FROM rust:slim-bookworm AS builder
+
+ENV XWIN_ACCEPT_LICENSE=1
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    clang \
+    llvm \
+    lld \
+    pkg-config \
+    curl \
+    file \
+    imagemagick \
+    ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+
+RUN cargo install --locked cargo-xwin
+RUN rustup target add x86_64-pc-windows-msvc
+
+WORKDIR /app
+COPY . /app
+
+# Placeholder RGBA icons so tauri::generate_context! validation passes.
+RUN if [ ! -f src-tauri/icons/32x32.png ]; then \
+      mkdir -p src-tauri/icons && \
+      convert -size 32x32   xc:'#7c4dff' -alpha set PNG32:src-tauri/icons/32x32.png && \
+      convert -size 128x128 xc:'#7c4dff' -alpha set PNG32:src-tauri/icons/128x128.png && \
+      convert -size 256x256 xc:'#7c4dff' -alpha set PNG32:src-tauri/icons/128x128@2x.png && \
+      convert src-tauri/icons/32x32.png src-tauri/icons/icon.ico && \
+      cp src-tauri/icons/128x128.png src-tauri/icons/icon.icns ; \
+    fi
+
+WORKDIR /app/src-tauri
+RUN --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-v2 \
+    --mount=type=cache,target=/root/.cache/cargo-xwin,id=xwin-cache-v2 \
+    --mount=type=cache,target=/app/src-tauri/target,id=tauri-target-v2 \
+    cargo xwin build --release --target x86_64-pc-windows-msvc \
+    && mkdir -p /out \
+    && cp target/x86_64-pc-windows-msvc/release/minecraft-mod-like-im-five.exe /out/
+
+# -- export stage -------------------------------------------------------------
+# Final stage is `scratch` so `docker build -o dist .` extracts only the exe
+# into the host dist/ folder — no intermediate container, no docker cp ritual.
+FROM scratch AS export
+COPY --from=builder /out/minecraft-mod-like-im-five.exe /minecraft-mod-like-im-five.exe

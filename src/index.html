@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Minecraft Mods, Easy</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header>
+      <h1>Minecraft Mods, Easy</h1>
+      <div class="status-row">
+        <div id="mc-version" class="status">Latest MC: ...</div>
+        <div id="mc-status" class="status">Looking for Minecraft...</div>
+      </div>
+    </header>
+
+    <main>
+      <section id="profiles" class="cards"></section>
+
+      <section id="dropzone" class="dropzone">
+        <div class="dropzone-inner">
+          <div class="dropzone-title">Drag a mod file here</div>
+          <div class="dropzone-sub">We'll check if it works with your setup</div>
+        </div>
+      </section>
+
+      <section id="log" class="log" aria-live="polite"></section>
+    </main>
+
+    <script src="main.js"></script>
+  </body>
+</html>

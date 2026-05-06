@@ -1,0 +1,27 @@
+name: Renovate
+
+# Self-hosted Renovate runner. Optional — if you install the Renovate GitHub
+# App from the marketplace, you don't need this workflow. Keeping it as a
+# fallback / for users who prefer self-hosted.
+#
+# Requires repo secret RENOVATE_TOKEN (a fine-grained PAT with read+write on
+# this repo's contents, pull-requests, issues, and workflows).
+
+on:
+  schedule:
+    - cron: "0 7 * * 1-5"   # weekdays at 07:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  renovate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: renovatebot/github-action@v41.0.0
+        with:
+          token: ${{ secrets.RENOVATE_TOKEN }}
+          configurationFile: renovate.json

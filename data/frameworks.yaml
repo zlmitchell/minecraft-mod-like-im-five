@@ -1,0 +1,60 @@
+version: 1
+
+# Registry of mod loaders. URLs and templates here are the only place
+# loader-specific knowledge lives. The Rust backend reads this file at
+# startup and resolves {placeholders} when installing.
+
+frameworks:
+  fabric:
+    name: Fabric
+    type: loader
+    homepage: https://fabricmc.net
+    github: https://github.com/FabricMC
+    update_delay_days_typical: 3
+    # Fabric publishes profile JSON files via meta API — we don't need to
+    # run the installer jar. Write the JSON directly under .minecraft/versions.
+    meta:
+      loader_versions: https://meta.fabricmc.net/v2/versions/loader/{mc_version}
+      profile_json: https://meta.fabricmc.net/v2/versions/loader/{mc_version}/{loader_version}/profile/json
+
+  neoforge:
+    name: NeoForge
+    type: loader
+    homepage: https://neoforged.net
+    github: https://github.com/neoforged/NeoForge
+    update_delay_days_typical: 14
+    # NeoForge requires running the installer jar. Phase 1 not yet implemented;
+    # noted here so the YAML schema is complete.
+    installer:
+      kind: jar-headless
+      url_template: https://maven.neoforged.net/releases/net/neoforged/neoforge/{loader_version}/neoforge-{loader_version}-installer.jar
+      args: ["--installClient", "{minecraft_dir}"]
+    versions: https://maven.neoforged.net/api/maven/versions/releases/net/neoforged/neoforge
+
+  quilt:
+    name: Quilt
+    type: loader
+    homepage: https://quiltmc.org
+    github: https://github.com/QuiltMC
+    update_delay_days_typical: 7
+    meta:
+      loader_versions: https://meta.quiltmc.org/v3/versions/loader/{mc_version}
+      profile_json: https://meta.quiltmc.org/v3/versions/loader/{mc_version}/{loader_version}/profile/json
+
+  forge:
+    name: Forge (legacy)
+    type: loader
+    deprecated_in_favor_of: neoforge
+    note: Use NeoForge for MC 1.20.5+. Forge kept for older modpacks.
+
+# Mod sources. Modrinth is primary (CC-friendly API, hash lookup).
+# GitHub Releases is a verification fallback for the few projects that
+# publish there with a stable tag scheme.
+mod_sources:
+  modrinth:
+    api_base: https://api.modrinth.com/v2
+    project: "{api_base}/project/{slug}"
+    versions: "{api_base}/project/{slug}/version?game_versions=[\"{mc_version}\"]&loaders=[\"{loader}\"]"
+    hash_lookup: "{api_base}/version_file/{hash}?algorithm=sha1"
+  github_releases:
+    api_template: https://api.github.com/repos/{owner}/{repo}/releases

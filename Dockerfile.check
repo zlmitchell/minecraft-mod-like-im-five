@@ -1,0 +1,32 @@
+# Used only by `docker build -f Dockerfile.check` to verify the Rust
+# backend compiles. Not part of the shipped product.
+FROM rust:slim-bookworm
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libwebkit2gtk-4.1-dev \
+    libssl-dev \
+    libgtk-3-dev \
+    libayatana-appindicator3-dev \
+    librsvg2-dev \
+    libsoup-3.0-dev \
+    libjavascriptcoregtk-4.1-dev \
+    pkg-config \
+    build-essential \
+    curl \
+    file \
+    imagemagick \
+  && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY . /app
+
+# Generate placeholder icons. Tauri requires RGBA PNGs (color-type 6).
+RUN mkdir -p src-tauri/icons \
+  && convert -size 32x32 xc:'#7c4dff' -alpha set PNG32:src-tauri/icons/32x32.png \
+  && convert -size 128x128 xc:'#7c4dff' -alpha set PNG32:src-tauri/icons/128x128.png \
+  && convert -size 256x256 xc:'#7c4dff' -alpha set PNG32:src-tauri/icons/128x128@2x.png \
+  && convert src-tauri/icons/32x32.png src-tauri/icons/icon.ico \
+  && cp src-tauri/icons/128x128.png src-tauri/icons/icon.icns
+
+WORKDIR /app/src-tauri
+RUN cargo check --locked 2>&1 || cargo check 2>&1
