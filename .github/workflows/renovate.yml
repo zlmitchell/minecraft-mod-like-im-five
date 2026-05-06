@@ -8,8 +8,9 @@ name: Renovate
 # this repo's contents, pull-requests, issues, and workflows).
 
 on:
-  schedule:
-    - cron: "0 7 * * 1-5"   # weekdays at 07:00 UTC
+  # Cron disabled — set RENOVATE_TOKEN repo secret first, then add it back.
+  # Recommended path: install the Renovate GitHub App instead, which uses
+  # webhooks and doesn't need this workflow at all.
   workflow_dispatch:
 
 permissions:
