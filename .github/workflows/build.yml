@@ -18,10 +18,6 @@ jobs:
         with:
           workspaces: src-tauri
 
-      - name: Generate placeholder icons
-        run: pwsh ./scripts/gen-icons.ps1
-        shell: pwsh
-
       - name: Build exe
         working-directory: src-tauri
         run: cargo build --release
