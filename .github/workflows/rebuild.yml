@@ -77,7 +77,13 @@ jobs:
       - run: npm install
 
       - name: Regenerate icons in proper platform formats
-        run: npx tauri icon src-tauri/icons/icon.png
+        shell: bash
+        run: |
+          if [ -f src-tauri/icons/icon.png ]; then
+            npx tauri icon src-tauri/icons/icon.png
+          else
+            echo "src-tauri/icons/icon.png absent at this tag; skipping regeneration"
+          fi
 
       - uses: tauri-apps/tauri-action@v0
         env:
