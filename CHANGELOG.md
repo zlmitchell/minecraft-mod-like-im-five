@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.0](https://github.com/zlmitchell/minecraft-mod-like-im-five/compare/v0.2.1...v0.3.0) (2026-05-06)
+
+
+### Features
+
+* **release:** add portable Windows exe alongside the installer ([e226aa0](https://github.com/zlmitchell/minecraft-mod-like-im-five/commit/e226aa07d997d19c558e4b064026a999f516faa8))
+* **updater:** auto-check for new versions on launch ([b68dca0](https://github.com/zlmitchell/minecraft-mod-like-im-five/commit/b68dca0ecf6288acffccccbe38bc400f708a3665))
+
 ## [0.2.1](https://github.com/zlmitchell/minecraft-mod-like-im-five/compare/v0.2.0...v0.2.1) (2026-05-06)
 
 
