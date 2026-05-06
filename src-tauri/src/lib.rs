@@ -6,15 +6,21 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha1::{Digest, Sha1};
 use sysinfo::System;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 
 const MODRINTH_API: &str = "https://api.modrinth.com/v2";
 const FABRIC_META: &str = "https://meta.fabricmc.net/v2";
 const USER_AGENT: &str = "minecraft-mod-like-im-five/0.1";
 
-// Curated profiles are embedded at compile time. Editing the YAML and
-// rebuilding the app updates the available profiles.
+// Curated profiles are embedded at compile time as a fallback. The runtime
+// preference is to fetch the latest YAML from the `data-latest` GitHub
+// release so adding a mod doesn't require a binary rebuild — clients pick
+// up the new profiles on next launch.
 const PROFILES_YAML: &str = include_str!("../../data/profiles.yaml");
+const DATA_RELEASE_BASE: &str =
+    "https://github.com/zlmitchell/minecraft-mod-like-im-five/releases/download/data-latest";
+const DATA_RELEASE_API: &str =
+    "https://api.github.com/repos/zlmitchell/minecraft-mod-like-im-five/releases/tags/data-latest";
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 struct ModRef {
@@ -155,15 +161,108 @@ fn get_minecraft_dir() -> Result<String, String> {
     Ok(dir.to_string_lossy().to_string())
 }
 
-fn read_profiles() -> Result<Vec<Profile>, String> {
+fn cached_data_path(app: &AppHandle, filename: &str) -> Option<PathBuf> {
+    app.path()
+        .app_local_data_dir()
+        .ok()
+        .map(|dir| dir.join(filename))
+}
+
+fn read_profiles(app: &AppHandle) -> Result<Vec<Profile>, String> {
+    if let Some(path) = cached_data_path(app, "profiles.yaml") {
+        if let Ok(content) = fs::read_to_string(&path) {
+            if let Ok(parsed) = serde_yaml::from_str::<ProfilesFile>(&content) {
+                return Ok(parsed.profiles);
+            }
+        }
+    }
     let parsed: ProfilesFile = serde_yaml::from_str(PROFILES_YAML)
         .map_err(|e| format!("parse profiles.yaml: {e}"))?;
     Ok(parsed.profiles)
 }
 
 #[tauri::command]
-fn list_profiles() -> Result<Vec<Profile>, String> {
-    read_profiles()
+fn list_profiles(app: AppHandle) -> Result<Vec<Profile>, String> {
+    read_profiles(&app)
+}
+
+#[tauri::command]
+fn get_app_version() -> &'static str {
+    env!("CARGO_PKG_VERSION")
+}
+
+#[derive(Serialize)]
+struct DataManifest {
+    label: String,
+    published_at: Option<String>,
+    using_cache: bool,
+}
+
+#[tauri::command]
+async fn get_data_manifest(app: AppHandle) -> Result<DataManifest, String> {
+    let using_cache = cached_data_path(&app, "profiles.yaml")
+        .map(|p| p.exists())
+        .unwrap_or(false);
+    let client = http_client();
+    let resp = client
+        .get(DATA_RELEASE_API)
+        .send()
+        .await
+        .map_err(|e| format!("data-latest api: {e}"))?;
+    if !resp.status().is_success() {
+        return Ok(DataManifest {
+            label: "embedded".to_string(),
+            published_at: None,
+            using_cache,
+        });
+    }
+    let v: Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("data-latest json: {e}"))?;
+    Ok(DataManifest {
+        label: v
+            .get("name")
+            .and_then(|x| x.as_str())
+            .map(String::from)
+            .unwrap_or_else(|| "data-latest".to_string()),
+        published_at: v
+            .get("published_at")
+            .and_then(|x| x.as_str())
+            .map(String::from),
+        using_cache,
+    })
+}
+
+#[tauri::command]
+async fn refresh_data_cache(app: AppHandle) -> Result<bool, String> {
+    let cache_dir = app
+        .path()
+        .app_local_data_dir()
+        .map_err(|e| format!("app local data dir: {e}"))?;
+    fs::create_dir_all(&cache_dir).map_err(|e| format!("mkdir cache: {e}"))?;
+    let client = http_client();
+    let mut updated = false;
+    for filename in ["profiles.yaml", "frameworks.yaml"] {
+        let url = format!("{DATA_RELEASE_BASE}/{filename}");
+        let resp = match client.get(&url).send().await {
+            Ok(r) if r.status().is_success() => r,
+            _ => continue,
+        };
+        let body = match resp.text().await {
+            Ok(b) => b,
+            Err(_) => continue,
+        };
+        // Validate parses before writing — never poison the cache.
+        if serde_yaml::from_str::<Value>(&body).is_err() {
+            continue;
+        }
+        let dest = cache_dir.join(filename);
+        if fs::write(&dest, body).is_ok() {
+            updated = true;
+        }
+    }
+    Ok(updated)
 }
 
 async fn fetch_latest_minecraft_version(
@@ -762,7 +861,7 @@ async fn install_profile(
     profile_id: String,
     minecraft_dir: Option<String>,
 ) -> Result<InstallReport, String> {
-    let profiles = read_profiles()?;
+    let profiles = read_profiles(&app)?;
     let profile = profiles
         .into_iter()
         .find(|p| p.id == profile_id)
@@ -1103,6 +1202,9 @@ pub fn run() {
             find_minecraft_processes,
             kill_minecraft_processes,
             launch_minecraft_launcher,
+            get_app_version,
+            get_data_manifest,
+            refresh_data_cache,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

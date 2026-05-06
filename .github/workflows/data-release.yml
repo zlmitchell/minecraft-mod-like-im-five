@@ -1,0 +1,47 @@
+name: Data release
+
+# Publishes data/*.yaml files as assets on a rolling `data-latest` release.
+# Triggers on every push to main that touches data/, so adding a mod or
+# changing a profile updates the data without rebuilding the app — clients
+# fetch the latest YAMLs on startup.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'data/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate YAML files parse cleanly
+        run: |
+          set -e
+          for f in data/*.yaml; do
+            python3 -c "import yaml; yaml.safe_load(open('$f'))"
+            echo "OK: $f"
+          done
+
+      - name: Compute label
+        id: ver
+        run: echo "label=$(date -u +%Y-%m-%dT%H-%M-%SZ)-${GITHUB_SHA:0:7}" >> "$GITHUB_OUTPUT"
+
+      - name: Upsert data-latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Delete the old rolling release if it exists; the tag is recreated
+          # at the new commit. (Keep prior data immutable on app-binary tags.)
+          gh release delete data-latest --cleanup-tag --yes 2>/dev/null || true
+          gh release create data-latest \
+            --target "${GITHUB_SHA}" \
+            --title "Data ${{ steps.ver.outputs.label }}" \
+            --notes "Rolling release of data/*.yaml. Auto-republished on every push to main that touches data/. Clients fetch the latest YAMLs from this release on startup." \
+            data/profiles.yaml data/frameworks.yaml

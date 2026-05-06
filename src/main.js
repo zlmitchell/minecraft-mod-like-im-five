@@ -17,6 +17,7 @@ const versionEl = document.getElementById("mc-version");
 const cardsEl = document.getElementById("profiles");
 const dropEl = document.getElementById("dropzone");
 const logEl = document.getElementById("log");
+const versionLineEl = document.getElementById("version-line");
 
 async function refreshMcDirStatus() {
   statusEl.classList.remove("ok", "bad");
@@ -98,9 +99,52 @@ async function checkForUpdates() {
   }
 }
 
+function shortDate(iso) {
+  if (!iso) return "?";
+  return iso.slice(0, 10);
+}
+
+async function showVersions() {
+  let appV = "?";
+  let dataLine = "?";
+  try {
+    appV = await invoke("get_app_version");
+  } catch {}
+  versionLineEl.textContent = `App v${appV} · Data ${dataLine}`;
+  try {
+    const m = await invoke("get_data_manifest");
+    const date = shortDate(m.published_at);
+    const cacheTag = m.using_cache ? "" : " (embedded)";
+    dataLine = `${date}${cacheTag}`;
+    versionLineEl.textContent = `App v${appV} · Data ${dataLine}`;
+  } catch {
+    versionLineEl.textContent = `App v${appV} · Data embedded`;
+  }
+}
+
 async function init() {
   // Background update check — doesn't block UI setup
   checkForUpdates();
+
+  showVersions();
+
+  // Pull latest profiles/frameworks YAML from the data-latest GitHub release
+  // in the background; if it succeeds, re-render the cards from the fresh
+  // data so kids don't need to relaunch to see new mods.
+  invoke("refresh_data_cache")
+    .then(async (updated) => {
+      if (updated) {
+        try {
+          const profiles = await invoke("list_profiles");
+          renderProfiles(profiles);
+          showVersions();
+          logLine("Profiles refreshed from latest data release.", "ok");
+        } catch (e) {
+          console.warn("re-render after refresh:", e);
+        }
+      }
+    })
+    .catch((e) => console.warn("data refresh:", e));
 
   try {
     const v = await invoke("get_latest_minecraft_version");

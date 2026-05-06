@@ -51,6 +51,18 @@ h1 {
   letter-spacing: -0.02em;
 }
 
+.title-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.version-line {
+  font-size: 12px;
+  color: var(--muted);
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+}
+
 .status-row {
   display: flex;
   gap: 10px;
