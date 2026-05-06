@@ -197,10 +197,20 @@ async fn get_latest_minecraft_version() -> Result<LatestMcVersion, String> {
 }
 
 fn collect_minecraft_processes(sys: &System) -> Vec<RunningProc> {
+    // Exclude ourselves: our binary name contains "minecraft" so a naive
+    // substring match would have us asking the user to close the app they
+    // just opened.
+    let self_pid = std::process::id();
     let mut found = vec![];
     for (pid, proc) in sys.processes() {
+        if pid.as_u32() == self_pid {
+            continue;
+        }
         let name = proc.name().to_string_lossy().to_string();
         let lower = name.to_lowercase();
+        if lower.contains("mod-like-im-five") {
+            continue;
+        }
         let cmd_has_minecraft = proc.cmd().iter().any(|s| {
             s.to_string_lossy().to_lowercase().contains(".minecraft")
         });
