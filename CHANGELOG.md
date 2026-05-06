@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/zlmitchell/minecraft-mod-like-im-five/compare/v0.2.0...v0.2.1) (2026-05-06)
+
+
+### Bug Fixes
+
+* more thorough Minecraft launcher detection ([17ae81d](https://github.com/zlmitchell/minecraft-mod-like-im-five/commit/17ae81d42f960d06c1e500f6285da4d414f8ae67))
+
 ## [0.2.0](https://github.com/zlmitchell/minecraft-mod-like-im-five/compare/v0.1.1...v0.2.0) (2026-05-06)
 
 
