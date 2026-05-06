@@ -255,30 +255,94 @@ fn kill_minecraft_processes() -> u32 {
 
 #[tauri::command]
 fn launch_minecraft_launcher() -> Result<(), String> {
-    let mut candidates: Vec<PathBuf> = vec![];
-    if let Ok(p) = std::env::var("ProgramFiles(x86)") {
-        candidates.push(PathBuf::from(p).join("Minecraft Launcher").join("MinecraftLauncher.exe"));
-    }
-    if let Ok(p) = std::env::var("ProgramFiles") {
-        candidates.push(PathBuf::from(p).join("Minecraft Launcher").join("MinecraftLauncher.exe"));
-    }
-    if let Ok(p) = std::env::var("LOCALAPPDATA") {
-        candidates.push(PathBuf::from(p).join(r"Microsoft\WindowsApps\Microsoft.4297127D64EC6_8wekyb3d8bbwe\Minecraft.exe"));
-    }
-    for path in &candidates {
-        if path.exists() {
-            std::process::Command::new(path)
+    let mut tried: Vec<String> = vec![];
+
+    // 1. Start Menu shortcuts. The Microsoft Store install drops one here,
+    //    and `cmd /c start` resolves the .lnk to its real target via the
+    //    Windows shell — works for both Store-app and standalone installs.
+    let lnk_candidates: Vec<PathBuf> = [
+        std::env::var("APPDATA").ok().map(|p| {
+            PathBuf::from(p).join(r"Microsoft\Windows\Start Menu\Programs\Minecraft Launcher.lnk")
+        }),
+        std::env::var("ProgramData").ok().map(|p| {
+            PathBuf::from(p).join(r"Microsoft\Windows\Start Menu\Programs\Minecraft Launcher.lnk")
+        }),
+        std::env::var("APPDATA").ok().map(|p| {
+            PathBuf::from(p).join(r"Microsoft\Windows\Start Menu\Programs\Minecraft.lnk")
+        }),
+        std::env::var("ProgramData").ok().map(|p| {
+            PathBuf::from(p).join(r"Microsoft\Windows\Start Menu\Programs\Minecraft.lnk")
+        }),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+
+    for lnk in &lnk_candidates {
+        if lnk.exists() {
+            let lnk_str = lnk.to_string_lossy().to_string();
+            match std::process::Command::new("cmd")
+                .args(["/c", "start", "", &lnk_str])
                 .spawn()
-                .map_err(|e| format!("spawn launcher {}: {e}", path.display()))?;
-            return Ok(());
+            {
+                Ok(_) => return Ok(()),
+                Err(e) => tried.push(format!("{}: {e}", lnk.display())),
+            }
         }
     }
-    // Fallback to URI scheme registered by the official launcher
-    std::process::Command::new("cmd")
-        .args(["/c", "start", "", "minecraft-launcher://"])
+
+    // 2. Direct exe paths for standalone installs (older / non-Store).
+    let exe_candidates: Vec<PathBuf> = [
+        std::env::var("ProgramFiles(x86)").ok().map(|p| {
+            PathBuf::from(p).join("Minecraft Launcher").join("MinecraftLauncher.exe")
+        }),
+        std::env::var("ProgramFiles").ok().map(|p| {
+            PathBuf::from(p).join("Minecraft Launcher").join("MinecraftLauncher.exe")
+        }),
+        std::env::var("LOCALAPPDATA").ok().map(|p| {
+            PathBuf::from(p).join(r"Programs\Minecraft Launcher\MinecraftLauncher.exe")
+        }),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+
+    for exe in &exe_candidates {
+        if exe.exists() {
+            match std::process::Command::new(exe).spawn() {
+                Ok(_) => return Ok(()),
+                Err(e) => tried.push(format!("{}: {e}", exe.display())),
+            }
+        }
+    }
+
+    // 3. Microsoft Store app via shell:AppsFolder + AUMID. No file check
+    //    possible; this either works or explorer pops a "not installed" UI.
+    if std::process::Command::new("explorer.exe")
+        .arg(r"shell:AppsFolder\Microsoft.4297127D64EC6_8wekyb3d8bbwe!Minecraft")
         .spawn()
-        .map_err(|e| format!("fallback launcher: {e}"))?;
-    Ok(())
+        .is_ok()
+    {
+        return Ok(());
+    }
+    tried.push("shell:AppsFolder".into());
+
+    // 4. URI schemes registered by the official launcher (last resort).
+    for scheme in ["minecraft://", "minecraft-launcher://"] {
+        if std::process::Command::new("cmd")
+            .args(["/c", "start", "", scheme])
+            .spawn()
+            .is_ok()
+        {
+            return Ok(());
+        }
+        tried.push(scheme.into());
+    }
+
+    Err(format!(
+        "Couldn't find the Minecraft launcher. Open it from the Start Menu yourself. Tried: {}",
+        tried.join("; ")
+    ))
 }
 
 // Pick a sensible -Xmx based on installed RAM. Half of system memory, capped
