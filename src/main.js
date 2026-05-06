@@ -1,6 +1,8 @@
 const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
 const { open: openDialog, ask } = window.__TAURI__.dialog;
+const updater = window.__TAURI__.updater;
+const processPlugin = window.__TAURI__.process;
 
 const STORAGE_KEY = "minecraft_dir_override";
 
@@ -56,7 +58,50 @@ function logLine(message, level = "info") {
   logEl.scrollTop = logEl.scrollHeight;
 }
 
+async function checkForUpdates() {
+  if (!updater?.check) return;
+  try {
+    const update = await updater.check();
+    if (!update) return;
+    const proceed = await ask(
+      `Version ${update.version} is available (you're on ${update.currentVersion}). Install now? The app will restart.`,
+      {
+        title: "Update available",
+        kind: "info",
+        okLabel: "Install update",
+        cancelLabel: "Later",
+      },
+    );
+    if (!proceed) return;
+    let lastPct = -10;
+    await update.downloadAndInstall((event) => {
+      if (event.event === "Started") {
+        logLine(`Downloading update ${update.version}...`, "info");
+      } else if (event.event === "Progress") {
+        const total = event.data?.contentLength || 0;
+        if (total > 0) {
+          const pct = Math.floor((event.data.downloaded / total) * 100);
+          if (pct >= lastPct + 10) {
+            logLine(`  ${pct}%`, "info");
+            lastPct = pct;
+          }
+        }
+      } else if (event.event === "Finished") {
+        logLine("Update installed. Restarting...", "ok");
+      }
+    });
+    if (processPlugin?.relaunch) {
+      await processPlugin.relaunch();
+    }
+  } catch (err) {
+    console.warn("update check:", err);
+  }
+}
+
 async function init() {
+  // Background update check — doesn't block UI setup
+  checkForUpdates();
+
   try {
     const v = await invoke("get_latest_minecraft_version");
     latestMcVersion = v.release;
