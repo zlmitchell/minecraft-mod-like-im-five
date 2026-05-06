@@ -3,10 +3,10 @@
   "release-type": "rust",
   "include-component-in-tag": false,
   "packages": {
-    ".": {
+    "src-tauri": {
       "package-name": "minecraft-mod-like-im-five",
       "release-type": "rust",
-      "extra-files": ["src-tauri/Cargo.toml", "src-tauri/tauri.conf.json"]
+      "extra-files": ["tauri.conf.json", "../package.json"]
     }
   }
 }
