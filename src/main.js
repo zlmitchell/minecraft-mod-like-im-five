@@ -18,6 +18,11 @@ const cardsEl = document.getElementById("profiles");
 const dropEl = document.getElementById("dropzone");
 const logEl = document.getElementById("log");
 const versionLineEl = document.getElementById("version-line");
+const checkUpdatesBtn = document.getElementById("check-updates-btn");
+const updatesPanel = document.getElementById("updates-panel");
+const updatesListEl = document.getElementById("updates-list");
+const updateAllBtn = document.getElementById("update-all-btn");
+const updatesCloseBtn = document.getElementById("updates-close-btn");
 
 async function refreshMcDirStatus() {
   statusEl.classList.remove("ok", "bad");
@@ -171,6 +176,12 @@ async function init() {
   });
 
   setupDropzone();
+
+  checkUpdatesBtn.addEventListener("click", runCheckForUpdates);
+  updateAllBtn.addEventListener("click", runUpdateAll);
+  updatesCloseBtn.addEventListener("click", () => {
+    updatesPanel.hidden = true;
+  });
 }
 
 function renderProfiles(profiles) {
@@ -259,6 +270,85 @@ async function installProfile(profile) {
   } catch (err) {
     logLine(`Setup failed: ${err}`, "bad");
   }
+}
+
+let pendingUpdates = [];
+
+function renderUpdates() {
+  updatesListEl.innerHTML = "";
+  if (pendingUpdates.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "update-row";
+    empty.innerHTML = `<div class="name">Everything is up to date.</div><div></div><div></div>`;
+    updatesListEl.appendChild(empty);
+    updateAllBtn.disabled = true;
+    return;
+  }
+  updateAllBtn.disabled = false;
+  pendingUpdates.forEach((u, idx) => {
+    const row = document.createElement("div");
+    row.className = "update-row";
+    row.innerHTML = `
+      <div>
+        <div class="name">${u.title}</div>
+        <div class="versions">${u.current_version} → ${u.latest_version}</div>
+      </div>
+      <span class="kind">${u.kind}</span>
+      <button data-idx="${idx}">Update</button>
+    `;
+    row.querySelector("button").addEventListener("click", async (e) => {
+      const btn = e.currentTarget;
+      btn.disabled = true;
+      btn.textContent = "...";
+      try {
+        await invoke("apply_update", { update: u, minecraftDir: activeMcDir() });
+        logLine(`Updated ${u.title} → ${u.latest_version}`, "ok");
+        pendingUpdates.splice(idx, 1);
+        renderUpdates();
+      } catch (err) {
+        logLine(`Update failed for ${u.title}: ${err}`, "bad");
+        btn.disabled = false;
+        btn.textContent = "Update";
+      }
+    });
+    updatesListEl.appendChild(row);
+  });
+}
+
+async function runCheckForUpdates() {
+  checkUpdatesBtn.disabled = true;
+  checkUpdatesBtn.textContent = "Checking...";
+  logEl.innerHTML = "";
+  try {
+    pendingUpdates = await invoke("check_for_updates", {
+      minecraftDir: activeMcDir(),
+    });
+    updatesPanel.hidden = false;
+    renderUpdates();
+    logLine(`Check complete — ${pendingUpdates.length} update(s) available.`, pendingUpdates.length ? "ok" : "info");
+  } catch (err) {
+    logLine(`Check failed: ${err}`, "bad");
+  } finally {
+    checkUpdatesBtn.disabled = false;
+    checkUpdatesBtn.textContent = "Check for updates";
+  }
+}
+
+async function runUpdateAll() {
+  updateAllBtn.disabled = true;
+  const list = [...pendingUpdates];
+  for (const u of list) {
+    try {
+      await invoke("apply_update", { update: u, minecraftDir: activeMcDir() });
+      logLine(`Updated ${u.title} → ${u.latest_version}`, "ok");
+      const idx = pendingUpdates.indexOf(u);
+      if (idx >= 0) pendingUpdates.splice(idx, 1);
+      renderUpdates();
+    } catch (err) {
+      logLine(`Update failed for ${u.title}: ${err}`, "bad");
+    }
+  }
+  updateAllBtn.disabled = false;
 }
 
 function setupDropzone() {

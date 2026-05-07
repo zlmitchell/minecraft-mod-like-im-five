@@ -19,6 +19,19 @@
     </header>
 
     <main>
+      <div class="actions-row">
+        <button id="check-updates-btn" class="check-btn">Check for updates</button>
+      </div>
+
+      <section id="updates-panel" class="updates-panel" hidden>
+        <div class="updates-header">
+          <div class="updates-title">Updates available</div>
+          <button id="update-all-btn" class="install">Update all</button>
+          <button id="updates-close-btn" class="close-btn" aria-label="close">×</button>
+        </div>
+        <div id="updates-list" class="updates-list"></div>
+      </section>
+
       <section id="profiles" class="cards"></section>
 
       <section id="dropzone" class="dropzone">

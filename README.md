@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="src-tauri/icons/icon.png" alt="Minecraft Mods, Easy" width="180" />
+</p>
+
 # Minecraft Mods, Easy
 
 One-click Minecraft mod manager designed for kids. Click a profile, get a working
@@ -37,7 +41,7 @@ If you build on top of this, give Modrinth credit too.
 |---|---|---|---|
 | Latest & Beautiful | 1.21.9 (pinned for shader-pack compat) | Fabric | Sodium + Iris + Lithium + Complementary Reimagined (auto-enabled) + LambDynamicLights + Continuity + Faithful 32x |
 | Bleeding Edge Performance | latest (auto-resolved each install) | Fabric | Sodium suite + Lithium + FerriteCore + Entity Culling + ImmediatelyFast + ModernFix + Iris (no shader pack pre-selected) + JEI + Jade + Xaero's Minimap + AppleSkin + Continuity + LambDynamicLights + Faithful 32x |
-| Adventure with Cobblemon & Create | 1.21.1 | NeoForge | (phase 2 — disabled in current build) |
+| Adventure with Cobblemon & Create | 1.21.1 | NeoForge | Cobblemon + Create + JEI + Jade + Xaero's Minimap + AppleSkin + GeckoLib (uses the Minecraft launcher's bundled Java to run the NeoForge installer) |
 
 ## Using it
 

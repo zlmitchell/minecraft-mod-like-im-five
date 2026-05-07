@@ -12,3 +12,12 @@ docker-exe-build.log
 .vscode/
 .idea/
 
+# `npx tauri icon` generates mobile + MS Store variants alongside the
+# desktop icons we actually reference in tauri.conf.json. They're noisy
+# in diffs and not needed for desktop builds.
+src-tauri/icons/Square*.png
+src-tauri/icons/StoreLogo.png
+src-tauri/icons/android/
+src-tauri/icons/ios/
+src-tauri/icons/64x64.png
+

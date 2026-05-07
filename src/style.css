@@ -98,6 +98,100 @@ main {
   margin: 0 auto;
 }
 
+.actions-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 16px;
+}
+
+.check-btn {
+  background: var(--card-bg);
+  color: var(--accent);
+  border: 2px solid var(--accent);
+  border-radius: 12px;
+  padding: 10px 16px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.check-btn:hover { background: rgba(124, 77, 255, 0.08); }
+.check-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.updates-panel {
+  background: var(--card-bg);
+  border-radius: 18px;
+  padding: 20px;
+  margin-bottom: 20px;
+  box-shadow: var(--shadow);
+}
+
+.updates-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.updates-title {
+  font-size: 18px;
+  font-weight: 700;
+  flex: 1;
+}
+
+.close-btn {
+  background: transparent;
+  border: none;
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--muted);
+  padding: 0 8px;
+}
+
+.updates-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.update-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(124, 77, 255, 0.05);
+}
+
+.update-row .name { font-weight: 600; }
+.update-row .versions {
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: 12px;
+  color: var(--muted);
+}
+.update-row .kind {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(124, 77, 255, 0.15);
+  color: var(--accent);
+}
+
+.update-row button {
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.update-row button:disabled { opacity: 0.4; cursor: wait; }
+
 .cards {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));

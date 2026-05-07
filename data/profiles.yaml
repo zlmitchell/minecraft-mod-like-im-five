@@ -6,6 +6,14 @@ version: 1
 #
 # To add a profile, copy one and change the slugs. The Modrinth slug is
 # the last segment of the project's URL (modrinth.com/mod/<slug>).
+#
+# Sources supported:
+#   modrinth         — { source: modrinth, slug: <slug> }
+#   url / planetminecraft / curseforge_url
+#                    — { source: url, url: "<direct-download-url>",
+#                        filename: "<saved-as>.jar|.zip" }
+#                    No version check, no auto-update — bumps require
+#                    editing the URL.
 
 profiles:
   - id: latest-beautiful
@@ -30,7 +38,7 @@ profiles:
     shaders:
       - { source: modrinth, slug: complementary-reimagined, default: true }
     resource_packs:
-      - { source: modrinth, slug: faithful-32x, default: true }
+      - { source: modrinth, slug: faithful-64x, default: true }
 
   - id: performance-edge
     name: Bleeding Edge Performance
@@ -59,7 +67,7 @@ profiles:
       - { source: modrinth, slug: continuity,             role: visual }
       - { source: modrinth, slug: lambdynamiclights,      role: visual }
     resource_packs:
-      - { source: modrinth, slug: faithful-32x, default: true }
+      - { source: modrinth, slug: faithful-64x, default: true }
 
   - id: adventure-content
     name: Adventure with Cobblemon and Create
@@ -68,8 +76,9 @@ profiles:
     loader: neoforge
     color: "#ff6f00"
     accent: adventure
-    not_implemented_in_phase_1: true  # NeoForge installer path is phase 2
+    java_xmx_gb: 10  # big modpack — bumps the auto-detected default
     mods:
+      - { source: modrinth, slug: kotlin-for-forge, role: required }   # Cobblemon language provider
       - { source: modrinth, slug: cobblemon,        role: content }
       - { source: modrinth, slug: create,           role: content }
       - { source: modrinth, slug: jei,              role: ui }
