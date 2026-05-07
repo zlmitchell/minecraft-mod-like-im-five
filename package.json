@@ -1,7 +1,7 @@
 {
   "name": "minecraft-mod-like-im-five",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "One-click Minecraft mod installer for kids",
   "scripts": {
     "tauri": "tauri",

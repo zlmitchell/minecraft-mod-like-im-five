@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.0](https://github.com/zlmitchell/minecraft-mod-like-im-five/compare/v0.3.0...v0.4.0) (2026-05-07)
+
+
+### Features
+
+* major install + UX overhaul ([7e41adb](https://github.com/zlmitchell/minecraft-mod-like-im-five/commit/7e41adb5036dac9a1a8e40192e9b351559610379))
+* publish data via rolling release; show app + data versions ([80a1fac](https://github.com/zlmitchell/minecraft-mod-like-im-five/commit/80a1fac1b9133c5e28c96fbc142af3fa18be3baa))
+
 ## [0.3.0](https://github.com/zlmitchell/minecraft-mod-like-im-five/compare/v0.2.1...v0.3.0) (2026-05-06)
 
 
