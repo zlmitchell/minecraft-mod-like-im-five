@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.1](https://github.com/zlmitchell/minecraft-mod-like-im-five/compare/v1.0.0...v1.0.1) (2026-05-07)
+
+
+### Bug Fixes
+
+* **icons:** derive Windows ICO from real icon.png artwork ([9c5afbb](https://github.com/zlmitchell/minecraft-mod-like-im-five/commit/9c5afbbde808aece385b90a773d3685d2fb4f4f7))
+
 ## [1.0.0](https://github.com/zlmitchell/minecraft-mod-like-im-five/compare/v0.4.0...v1.0.0) (2026-05-07)
 
 
