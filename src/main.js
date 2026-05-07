@@ -27,11 +27,18 @@ const updatesListEl = document.getElementById("updates-list");
 const updateAllBtn = document.getElementById("update-all-btn");
 const updatesCloseBtn = document.getElementById("updates-close-btn");
 
+// Tracks an explicit user dismissal so an in-flight install's progress
+// emits don't immediately re-open the overlay the user just closed.
+// Reset by showLogOverlay() (manual reopen via the pill) and by the
+// install handlers when they clear the log to begin a new run.
+let logUserDismissed = false;
+
 // Show overlay (and hide the floating "Log" pill). Once a line lands the
 // user has seen something happen — the overlay stays open until they hit ×.
 function showLogOverlay() {
   logOverlayEl.hidden = false;
   logToggleBtn.hidden = true;
+  logUserDismissed = false;
 }
 
 // Hide the overlay but leave the lines in place; expose the "Log" pill so the
@@ -39,6 +46,13 @@ function showLogOverlay() {
 function hideLogOverlay() {
   logOverlayEl.hidden = true;
   logToggleBtn.hidden = logEl.childElementCount === 0;
+  logUserDismissed = true;
+}
+
+// Forget the dismissal state (e.g. when a new install begins). Subsequent
+// log lines will auto-open the overlay again.
+function resetLogDismissal() {
+  logUserDismissed = false;
 }
 
 async function refreshMcDirStatus() {
@@ -79,7 +93,13 @@ function logLine(message, level = "info") {
   div.textContent = message;
   logEl.appendChild(div);
   logEl.scrollTop = logEl.scrollHeight;
-  showLogOverlay();
+  if (logUserDismissed) {
+    // User closed the overlay during an active run — keep it closed but
+    // surface the "Log" pill so they know progress is still happening.
+    logToggleBtn.hidden = false;
+  } else {
+    showLogOverlay();
+  }
 }
 
 async function checkForUpdates() {
@@ -257,6 +277,7 @@ function renderProfiles(profiles) {
 
 async function installProfile(profile) {
   logEl.innerHTML = "";
+  resetLogDismissal();
 
   try {
     const running = await invoke("find_minecraft_processes");
@@ -329,6 +350,7 @@ async function downloadServerPack(profile) {
   if (!target) return;
 
   logEl.innerHTML = "";
+  resetLogDismissal();
   logLine(`Building server pack for "${profile.name}"...`);
   try {
     const report = await invoke("download_server_pack", {
@@ -394,6 +416,7 @@ async function runCheckForUpdates() {
   checkUpdatesBtn.disabled = true;
   checkUpdatesBtn.textContent = "Checking...";
   logEl.innerHTML = "";
+  resetLogDismissal();
   try {
     pendingUpdates = await invoke("check_for_updates", {
       minecraftDir: activeMcDir(),
