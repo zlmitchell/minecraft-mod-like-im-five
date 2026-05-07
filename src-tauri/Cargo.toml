@@ -25,6 +25,7 @@ sha1 = "0.10"
 hex = "0.4"
 dirs = "5"
 sysinfo = "0.32"
+zip = { version = "2", default-features = false, features = ["deflate"] }
 
 [profile.dev]
 opt-level = 0

@@ -84,6 +84,22 @@ npm install
 npm run dev
 ```
 
+### Testing profile edits without a `data-latest` release
+
+By default the app pulls `profiles.yaml` from the `data-latest` GitHub
+release on every launch — which means edits to your local YAML are
+invisible to a built `.exe`. Set `MMLE5_LOCAL_DATA` to the directory
+containing your YAML to bypass GitHub and read straight from disk:
+
+```pwsh
+$env:MMLE5_LOCAL_DATA = "$(Resolve-Path .\data)"
+.\dist\minecraft-mod-like-im-five.exe
+```
+
+The version line in the header will read `Data local-dev: <path>` while
+this is on. Unset the variable (or open a new shell) to return to the
+production cached + GitHub flow.
+
 ## Adding a profile or mod
 
 Edit `data/profiles.yaml`, rebuild. Mod entries are Modrinth project slugs

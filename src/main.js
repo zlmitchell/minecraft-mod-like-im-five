@@ -1,6 +1,6 @@
 const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
-const { open: openDialog, ask } = window.__TAURI__.dialog;
+const { open: openDialog, save: saveDialog, ask } = window.__TAURI__.dialog;
 const updater = window.__TAURI__.updater;
 const processPlugin = window.__TAURI__.process;
 
@@ -17,12 +17,29 @@ const versionEl = document.getElementById("mc-version");
 const cardsEl = document.getElementById("profiles");
 const dropEl = document.getElementById("dropzone");
 const logEl = document.getElementById("log");
+const logOverlayEl = document.getElementById("log-overlay");
+const logToggleBtn = document.getElementById("log-toggle");
+const logCloseBtn = document.getElementById("log-close-btn");
 const versionLineEl = document.getElementById("version-line");
 const checkUpdatesBtn = document.getElementById("check-updates-btn");
 const updatesPanel = document.getElementById("updates-panel");
 const updatesListEl = document.getElementById("updates-list");
 const updateAllBtn = document.getElementById("update-all-btn");
 const updatesCloseBtn = document.getElementById("updates-close-btn");
+
+// Show overlay (and hide the floating "Log" pill). Once a line lands the
+// user has seen something happen — the overlay stays open until they hit ×.
+function showLogOverlay() {
+  logOverlayEl.hidden = false;
+  logToggleBtn.hidden = true;
+}
+
+// Hide the overlay but leave the lines in place; expose the "Log" pill so the
+// user can pop it back open without losing history.
+function hideLogOverlay() {
+  logOverlayEl.hidden = true;
+  logToggleBtn.hidden = logEl.childElementCount === 0;
+}
 
 async function refreshMcDirStatus() {
   statusEl.classList.remove("ok", "bad");
@@ -62,6 +79,7 @@ function logLine(message, level = "info") {
   div.textContent = message;
   logEl.appendChild(div);
   logEl.scrollTop = logEl.scrollHeight;
+  showLogOverlay();
 }
 
 async function checkForUpdates() {
@@ -118,10 +136,14 @@ async function showVersions() {
   versionLineEl.textContent = `App v${appV} · Data ${dataLine}`;
   try {
     const m = await invoke("get_data_manifest");
-    const date = shortDate(m.published_at);
-    const cacheTag = m.using_cache ? "" : " (embedded)";
-    dataLine = `${date}${cacheTag}`;
-    versionLineEl.textContent = `App v${appV} · Data ${dataLine}`;
+    if (m.label && m.label.startsWith("local-dev")) {
+      versionLineEl.textContent = `App v${appV} · Data ${m.label}`;
+    } else {
+      const date = shortDate(m.published_at);
+      const cacheTag = m.using_cache ? "" : " (embedded)";
+      dataLine = `${date}${cacheTag}`;
+      versionLineEl.textContent = `App v${appV} · Data ${dataLine}`;
+    }
   } catch {
     versionLineEl.textContent = `App v${appV} · Data embedded`;
   }
@@ -182,6 +204,8 @@ async function init() {
   updatesCloseBtn.addEventListener("click", () => {
     updatesPanel.hidden = true;
   });
+  logCloseBtn.addEventListener("click", hideLogOverlay);
+  logToggleBtn.addEventListener("click", showLogOverlay);
 }
 
 function renderProfiles(profiles) {
@@ -193,24 +217,40 @@ function renderProfiles(profiles) {
 
     const disabled = p.not_implemented_in_phase_1 ? "disabled" : "";
     const buttonLabel = p.not_implemented_in_phase_1 ? "Coming soon" : "Set it up";
-    const isAuto = p.minecraft_version.toLowerCase() === "latest";
-    const versionLabel = isAuto
-      ? (latestMcVersion ? `MC ${latestMcVersion} (latest)` : "MC latest (auto)")
-      : `MC ${p.minecraft_version}`;
+    const isModpack = !!p.modpack;
+    let versionLabel;
+    if (isModpack) {
+      versionLabel = "modpack (manifest pins MC + loader)";
+    } else {
+      const mcVer = p.minecraft_version || "?";
+      const isAuto = mcVer.toLowerCase() === "latest";
+      versionLabel = isAuto
+        ? (latestMcVersion ? `MC ${latestMcVersion} (latest)` : "MC latest (auto)")
+        : `MC ${mcVer}`;
+    }
+    const loaderLabel = isModpack ? p.modpack.slug : (p.loader || "?");
+    const itemsLabel = isModpack
+      ? "modpack"
+      : `${(p.mods || []).length} mods`;
 
     card.innerHTML = `
       <div class="card-meta">
         <span class="tag">${versionLabel}</span>
-        <span class="tag">${p.loader}</span>
-        <span class="tag">${p.mods.length} mods</span>
+        <span class="tag">${loaderLabel}</span>
+        <span class="tag">${itemsLabel}</span>
       </div>
       <div class="card-name">${p.name}</div>
       <div class="card-desc">${p.short_description}</div>
-      <button class="install" ${disabled} data-id="${p.id}">${buttonLabel}</button>
+      <div class="install-row">
+        <button class="install" ${disabled} data-id="${p.id}">${buttonLabel}</button>
+        <button class="server-pack" ${disabled} data-id="${p.id}" title="Download server-side mods as a zip" aria-label="Download server pack">↓</button>
+      </div>
     `;
 
-    const btn = card.querySelector("button");
-    btn.addEventListener("click", () => installProfile(p));
+    card.querySelector("button.install").addEventListener("click", () => installProfile(p));
+    card
+      .querySelector("button.server-pack")
+      .addEventListener("click", () => downloadServerPack(p));
     cardsEl.appendChild(card);
   }
 }
@@ -269,6 +309,41 @@ async function installProfile(profile) {
     }
   } catch (err) {
     logLine(`Setup failed: ${err}`, "bad");
+  }
+}
+
+async function downloadServerPack(profile) {
+  if (profile.not_implemented_in_phase_1) return;
+  const defaultName = `${profile.id}-server-pack-mc${profile.minecraft_version}.zip`;
+  let target;
+  try {
+    target = await saveDialog({
+      title: "Save server pack",
+      defaultPath: defaultName,
+      filters: [{ name: "Zip archive", extensions: ["zip"] }],
+    });
+  } catch (err) {
+    logLine(`Couldn't open save dialog: ${err}`, "bad");
+    return;
+  }
+  if (!target) return;
+
+  logEl.innerHTML = "";
+  logLine(`Building server pack for "${profile.name}"...`);
+  try {
+    const report = await invoke("download_server_pack", {
+      profileId: profile.id,
+      targetPath: target,
+    });
+    const skippedNote = report.skipped.length
+      ? ` (${report.skipped.length} skipped)`
+      : "";
+    logLine(
+      `Done. ${report.mods_included} server mod${report.mods_included === 1 ? "" : "s"}${skippedNote} → ${report.output_path}`,
+      "ok",
+    );
+  } catch (err) {
+    logLine(`Server pack failed: ${err}`, "bad");
   }
 }
 

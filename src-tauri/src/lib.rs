@@ -1,5 +1,6 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fs;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -26,10 +27,21 @@ const DATA_RELEASE_BASE: &str =
 const DATA_RELEASE_API: &str =
     "https://api.github.com/repos/zlmitchell/minecraft-mod-like-im-five/releases/tags/data-latest";
 
+// Dev escape hatch. Set MMLE5_LOCAL_DATA to a directory containing
+// profiles.yaml (and optionally frameworks.yaml) to short-circuit the
+// GitHub data-latest fetch and read straight from disk on every call.
+// Used to test profile changes without publishing a data-latest release.
+const LOCAL_DATA_ENV: &str = "MMLE5_LOCAL_DATA";
+
+fn local_data_dir() -> Option<PathBuf> {
+    std::env::var(LOCAL_DATA_ENV).ok().filter(|s| !s.is_empty()).map(PathBuf::from)
+}
+
 // Each `*Ref` carries `source` to discriminate between hosting providers.
-// `modrinth` requires `slug`. `url` requires `url` + `filename` (we don't
-// know the filename from a URL alone — it goes into mods/<filename>.jar).
-// New providers (e.g. CurseForge with an API key) can land alongside.
+// `modrinth`     — needs `slug`
+// `url`          — needs `url` + `filename`
+// `curseforge`   — needs `file_id` + `filename`. We build the forgecdn URL
+//                  ourselves so the YAML doesn't carry the gnarly path math.
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 struct ModRef {
@@ -40,6 +52,8 @@ struct ModRef {
     url: Option<String>,
     #[serde(default)]
     filename: Option<String>,
+    #[serde(default)]
+    file_id: Option<u64>,
     #[serde(default)]
     role: Option<String>,
 }
@@ -77,25 +91,73 @@ fn ref_display_name(source: &str, slug: &Option<String>, filename: &Option<Strin
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
+struct ModpackRef {
+    /// Currently only "modrinth-modpack" (.mrpack). CurseForge zip is a
+    /// future addition.
+    source: String,
+    slug: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
 struct Profile {
     id: String,
     name: String,
     short_description: String,
-    minecraft_version: String,
-    loader: String,
+    /// Optional for modpack-style profiles — the .mrpack manifest pins both.
+    #[serde(default)]
+    minecraft_version: Option<String>,
+    #[serde(default)]
+    loader: Option<String>,
     #[serde(default)]
     color: Option<String>,
     #[serde(default)]
     accent: Option<String>,
+    /// Mojang launcher icon. Either a vanilla block name (Crafting_Table,
+    /// Furnace, Cake, Enchanting_Table, etc.) or a `data:image/png;base64,...`
+    /// data URI. Defaults to Crafting_Table if absent.
+    #[serde(default)]
+    icon: Option<String>,
     #[serde(default)]
     not_implemented_in_phase_1: bool,
     #[serde(default)]
     java_xmx_gb: Option<u32>,
+    /// If set, install via the modpack flow (download .mrpack, parse
+    /// manifest, fetch every file, copy overrides). The mods/shaders/
+    /// resource_packs arrays below are ignored.
+    #[serde(default)]
+    modpack: Option<ModpackRef>,
+    /// Extra jars to drop into mods/ AFTER a modpack install. Used for
+    /// CurseForge-only or otherwise non-redistributable mods that the
+    /// .mrpack manifest can't ship — we pin a direct URL per profile.
+    /// Pin the URL by file ID (forgecdn) so it doesn't drift; if the pack
+    /// updates the dep version, update this entry too.
+    #[serde(default)]
+    modpack_supplements: Vec<ModRef>,
+    #[serde(default)]
     mods: Vec<ModRef>,
     #[serde(default)]
     shaders: Vec<ShaderRef>,
     #[serde(default)]
     resource_packs: Vec<ResourcePackRef>,
+}
+
+/// .mrpack format spec: https://docs.modrinth.com/modpacks/format/
+#[derive(Deserialize)]
+struct MrpackIndex {
+    #[serde(default)]
+    name: String,
+    files: Vec<MrpackFile>,
+    dependencies: HashMap<String, String>,
+}
+
+#[derive(Deserialize)]
+struct MrpackFile {
+    path: String,
+    #[serde(default)]
+    hashes: ModrinthHashes,
+    downloads: Vec<String>,
+    #[serde(default)]
+    env: Option<HashMap<String, String>>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -104,6 +166,27 @@ struct ProfilesFile {
     version: u32,
     profiles: Vec<Profile>,
 }
+
+// Written into mods/.mmle5-state.json after every successful install. Lets a
+// future install know which profile last owned mods/ so we can snapshot the
+// jars under that profile's name and (if the user is switching back) restore
+// from a prior snapshot instead of re-downloading.
+#[derive(Serialize, Deserialize, Clone)]
+struct MmleState {
+    profile_id: String,
+    profile_name: String,
+    #[serde(default)]
+    mc_version: Option<String>,
+    #[serde(default)]
+    loader: Option<String>,
+    #[serde(default)]
+    loader_version: Option<String>,
+    #[serde(default)]
+    modpack_version: Option<String>,
+    installed_at: String,
+}
+
+const STATE_FILENAME: &str = ".mmle5-state.json";
 
 #[derive(Serialize, Deserialize)]
 struct InstallReport {
@@ -331,6 +414,18 @@ fn cached_data_path(app: &AppHandle, filename: &str) -> Option<PathBuf> {
 }
 
 fn read_profiles(app: &AppHandle) -> Result<Vec<Profile>, String> {
+    // Local dev override: read straight from disk on every call so profile
+    // edits show up without a rebuild. Errors here are surfaced (not silently
+    // skipped) — if the user set the env var, they want feedback when the
+    // file is malformed instead of silently falling back to GitHub data.
+    if let Some(dir) = local_data_dir() {
+        let path = dir.join("profiles.yaml");
+        let content = fs::read_to_string(&path)
+            .map_err(|e| format!("MMLE5_LOCAL_DATA read {}: {e}", path.display()))?;
+        let parsed: ProfilesFile = serde_yaml::from_str(&content)
+            .map_err(|e| format!("MMLE5_LOCAL_DATA parse {}: {e}", path.display()))?;
+        return Ok(parsed.profiles);
+    }
     if let Some(path) = cached_data_path(app, "profiles.yaml") {
         if let Ok(content) = fs::read_to_string(&path) {
             if let Ok(parsed) = serde_yaml::from_str::<ProfilesFile>(&content) {
@@ -362,6 +457,13 @@ struct DataManifest {
 
 #[tauri::command]
 async fn get_data_manifest(app: AppHandle) -> Result<DataManifest, String> {
+    if let Some(dir) = local_data_dir() {
+        return Ok(DataManifest {
+            label: format!("local-dev: {}", dir.display()),
+            published_at: None,
+            using_cache: false,
+        });
+    }
     let using_cache = cached_data_path(&app, "profiles.yaml")
         .map(|p| p.exists())
         .unwrap_or(false);
@@ -398,6 +500,11 @@ async fn get_data_manifest(app: AppHandle) -> Result<DataManifest, String> {
 
 #[tauri::command]
 async fn refresh_data_cache(app: AppHandle) -> Result<bool, String> {
+    // Skip the GitHub fetch entirely when local-dev is on; otherwise the
+    // cache would shadow whatever the user is editing on disk on next launch.
+    if local_data_dir().is_some() {
+        return Ok(false);
+    }
     let cache_dir = app
         .path()
         .app_local_data_dir()
@@ -798,6 +905,10 @@ async fn install_neoforge(
     client: &reqwest::Client,
     mc_version: &str,
     mc_dir: &Path,
+    // For modpacks: install the EXACT NeoForge version the .mrpack manifest
+    // demands. None = pick the latest stable for this MC version (cobblemon
+    // path).
+    nf_version_override: Option<&str>,
 ) -> Result<(String, String), String> {
     let java = find_java().ok_or_else(|| {
         "Couldn't find Java. Open the Minecraft launcher once so it installs its bundled \
@@ -806,9 +917,18 @@ async fn install_neoforge(
     })?;
     emit_progress(app, format!("Java: {}", java.display()), "info");
 
-    emit_progress(app, "Resolving NeoForge version...", "info");
-    let nf_version = neoforge_pick_version(client, mc_version).await?;
-    emit_progress(app, format!("NeoForge {nf_version}"), "ok");
+    let nf_version = match nf_version_override {
+        Some(v) => {
+            emit_progress(app, format!("NeoForge {v} (from modpack manifest)"), "ok");
+            v.to_string()
+        }
+        None => {
+            emit_progress(app, "Resolving NeoForge version...", "info");
+            let v = neoforge_pick_version(client, mc_version).await?;
+            emit_progress(app, format!("NeoForge {v}"), "ok");
+            v
+        }
+    };
 
     let installer_url =
         format!("{NEOFORGE_MAVEN_BASE}/{nf_version}/neoforge-{nf_version}-installer.jar");
@@ -871,6 +991,349 @@ async fn install_neoforge(
     let version_id = find_neoforge_version_id(mc_dir, &nf_version)
         .ok_or_else(|| format!("NeoForge installer ran but no versions/* entry was created for {nf_version}"))?;
     Ok((nf_version, version_id))
+}
+
+// Install a Modrinth-format modpack (.mrpack). Downloads the pack, extracts
+// the manifest, installs the loader the manifest demands, fetches every
+// file in the manifest's files[] list to its declared path, and copies
+// overrides/ + client-overrides/ over the .minecraft/ tree.
+async fn install_modpack_profile(
+    app: &AppHandle,
+    client: &reqwest::Client,
+    mc_dir: &Path,
+    profile: &Profile,
+    modpack_slug: &str,
+) -> Result<InstallReport, String> {
+    emit_progress(app, format!("Resolving modpack {modpack_slug}..."), "info");
+
+    // Get latest version of the modpack from Modrinth
+    let url = format!("{MODRINTH_API}/project/{modpack_slug}/version");
+    let resp = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("modpack versions: {e}"))?;
+    if !resp.status().is_success() {
+        return Err(format!("modpack {modpack_slug}: HTTP {}", resp.status()));
+    }
+    let versions: Vec<ModrinthVersion> = resp
+        .json()
+        .await
+        .map_err(|e| format!("modpack json: {e}"))?;
+    let version = versions
+        .into_iter()
+        .next()
+        .ok_or_else(|| format!("no versions for modpack {modpack_slug}"))?;
+    let pack_file = version
+        .files
+        .iter()
+        .find(|f| f.primary)
+        .or_else(|| version.files.first())
+        .ok_or_else(|| format!("no files for modpack {modpack_slug}"))?;
+
+    // Download .mrpack to temp
+    let temp_dir = std::env::temp_dir().join("mmle5-modpack");
+    fs::create_dir_all(&temp_dir).map_err(|e| format!("mkdir temp: {e}"))?;
+    let mrpack_path = temp_dir.join(&pack_file.filename);
+    if !mrpack_path.exists() {
+        emit_progress(
+            app,
+            format!("Downloading modpack {} ...", pack_file.filename),
+            "info",
+        );
+        download_to(client, &pack_file.url, &mrpack_path).await?;
+    } else {
+        emit_progress(
+            app,
+            format!("Reusing already-downloaded {}", pack_file.filename),
+            "info",
+        );
+    }
+
+    // Open as zip + read manifest
+    let zip_file = std::fs::File::open(&mrpack_path)
+        .map_err(|e| format!("open {}: {e}", mrpack_path.display()))?;
+    let mut archive = zip::ZipArchive::new(zip_file)
+        .map_err(|e| format!("read mrpack zip: {e}"))?;
+
+    let manifest: MrpackIndex = {
+        let mut entry = archive
+            .by_name("modrinth.index.json")
+            .map_err(|e| format!("manifest: {e}"))?;
+        let mut buf = String::new();
+        entry
+            .read_to_string(&mut buf)
+            .map_err(|e| format!("read manifest: {e}"))?;
+        serde_json::from_str(&buf).map_err(|e| format!("parse manifest: {e}"))?
+    };
+
+    let mc_version = manifest
+        .dependencies
+        .get("minecraft")
+        .cloned()
+        .ok_or("modpack manifest missing minecraft dep")?;
+
+    let (loader_name, loader_version_from_manifest) = if let Some(v) = manifest.dependencies.get("fabric-loader") {
+        ("fabric".to_string(), v.clone())
+    } else if let Some(v) = manifest.dependencies.get("neoforge") {
+        ("neoforge".to_string(), v.clone())
+    } else if let Some(v) = manifest.dependencies.get("quilt-loader") {
+        ("quilt".to_string(), v.clone())
+    } else if let Some(v) = manifest.dependencies.get("forge") {
+        ("forge".to_string(), v.clone())
+    } else {
+        return Err(format!(
+            "modpack manifest specifies no supported loader (deps: {:?})",
+            manifest.dependencies.keys().collect::<Vec<_>>()
+        ));
+    };
+
+    emit_progress(
+        app,
+        format!(
+            "Modpack '{}' for MC {} ({} {})",
+            manifest.name, mc_version, loader_name, loader_version_from_manifest
+        ),
+        "ok",
+    );
+
+    // Install the EXACT loader version the manifest demands. The previous
+    // fall-back-to-latest-stable behavior caused boot-loops because modpacks
+    // routinely require newer Fabric loaders (0.16+/0.18+) than what Fabric
+    // marks "stable" for older MC versions, and an existing-on-disk install
+    // from a previous profile was usually too old. Use what the pack asked
+    // for; only reuse on disk if the version_id matches exactly.
+    let (loader_version, version_id) = match loader_name.as_str() {
+        "fabric" => {
+            let target_lv = loader_version_from_manifest.clone();
+            let target_vid = format!("fabric-loader-{target_lv}-{mc_version}");
+            let target_json = mc_dir
+                .join("versions")
+                .join(&target_vid)
+                .join(format!("{target_vid}.json"));
+            if target_json.exists() {
+                emit_progress(
+                    app,
+                    format!("Using existing Fabric loader {target_lv} (matches manifest)"),
+                    "ok",
+                );
+                (target_lv, target_vid)
+            } else {
+                emit_progress(
+                    app,
+                    format!("Installing Fabric loader {target_lv} for MC {mc_version} (from manifest)..."),
+                    "info",
+                );
+                let pj = fabric_fetch_profile_json(client, &mc_version, &target_lv).await?;
+                let vid = pj
+                    .get("id")
+                    .and_then(|v| v.as_str())
+                    .ok_or("fabric profile json missing 'id'")?
+                    .to_string();
+                write_fabric_version_files(mc_dir, &vid, &pj)?;
+                (target_lv, vid)
+            }
+        }
+        "neoforge" => {
+            let target_nf = loader_version_from_manifest.clone();
+            let target_vid = format!("neoforge-{target_nf}");
+            let target_json = mc_dir
+                .join("versions")
+                .join(&target_vid)
+                .join(format!("{target_vid}.json"));
+            if target_json.exists() {
+                emit_progress(
+                    app,
+                    format!("Using existing NeoForge {target_nf} (matches manifest)"),
+                    "ok",
+                );
+                (target_nf, target_vid)
+            } else {
+                install_neoforge(app, client, &mc_version, mc_dir, Some(&target_nf)).await?
+            }
+        }
+        other => {
+            return Err(format!(
+                "modpack uses unsupported loader: {other} (only fabric and neoforge work)"
+            ));
+        }
+    };
+
+    // Backup existing mods so the kid doesn't end up with stale jars.
+    // Prime the cache *before* the backup move so any jars on disk
+    // (including ones from the previous profile) become cache-resident
+    // and the manifest install loop hits cache instead of re-downloading.
+    let mods_dir = mc_dir.join("mods");
+    fs::create_dir_all(&mods_dir).map_err(|e| format!("mkdir mods: {e}"))?;
+    let _ = prime_cache_from_disk(app, mc_dir).await;
+    backup_existing_mods(app, &mods_dir)?;
+
+    // Download all files listed in manifest to their declared paths
+    let mut installed = 0u32;
+    let mut skipped: Vec<String> = Vec::new();
+    for f in &manifest.files {
+        // Skip server-only files for client install
+        let env_client = f
+            .env
+            .as_ref()
+            .and_then(|e| e.get("client"))
+            .map(|s| s.as_str());
+        if env_client == Some("unsupported") {
+            continue;
+        }
+        let dest = mc_dir.join(&f.path);
+        if let Some(parent) = dest.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|e| format!("mkdir {}: {e}", parent.display()))?;
+        }
+        let dl_url = match f.downloads.first() {
+            Some(u) => u.clone(),
+            None => {
+                skipped.push(format!("{} (no download URL)", f.path));
+                continue;
+            }
+        };
+        match download_to_if_missing(app, client, &dl_url, &dest, f.hashes.sha1.as_deref()).await {
+            Ok(_) => installed += 1,
+            Err(e) => {
+                skipped.push(format!("{} ({e})", f.path));
+                emit_progress(app, format!("Skip {}: {e}", f.path), "warn");
+            }
+        }
+    }
+
+    // Extract overrides/ and client-overrides/ to .minecraft/
+    let mut overrides_extracted = 0u32;
+    let prefixes = ["overrides/", "client-overrides/"];
+    for i in 0..archive.len() {
+        let mut entry = archive
+            .by_index(i)
+            .map_err(|e| format!("zip entry {i}: {e}"))?;
+        let entry_name = entry.name().to_string();
+        let rel = match prefixes
+            .iter()
+            .find_map(|p| entry_name.strip_prefix(p).map(|s| s.to_string()))
+        {
+            Some(r) => r,
+            None => continue,
+        };
+        if rel.is_empty() || rel.ends_with('/') {
+            continue;
+        }
+        let dest = mc_dir.join(&rel);
+        if let Some(parent) = dest.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|e| format!("mkdir override parent: {e}"))?;
+        }
+        let mut out = std::fs::File::create(&dest)
+            .map_err(|e| format!("create override {}: {e}", dest.display()))?;
+        std::io::copy(&mut entry, &mut out)
+            .map_err(|e| format!("copy override {}: {e}", dest.display()))?;
+        overrides_extracted += 1;
+    }
+    emit_progress(
+        app,
+        format!("Extracted {overrides_extracted} override file(s)"),
+        "ok",
+    );
+
+    // Drop in any supplementary jars the .mrpack couldn't ship (typically
+    // CurseForge-only mods whose authors don't allow Modrinth redistribution
+    // but the pack's own mods declare as a hard dependency). Pinned by direct
+    // forgecdn URL so no API auth is needed.
+    if !profile.modpack_supplements.is_empty() {
+        emit_progress(
+            app,
+            format!(
+                "Installing {} supplemental mod(s)...",
+                profile.modpack_supplements.len()
+            ),
+            "info",
+        );
+        for sup in &profile.modpack_supplements {
+            let display = ref_display_name(&sup.source, &sup.slug, &sup.filename);
+            match sup.source.as_str() {
+                "url" | "planetminecraft" | "curseforge_url" => {
+                    let url = match &sup.url {
+                        Some(u) => u,
+                        None => {
+                            skipped.push(format!("supplement {display} (missing url)"));
+                            continue;
+                        }
+                    };
+                    let filename = match &sup.filename {
+                        Some(f) => f,
+                        None => {
+                            skipped.push(format!("supplement {display} (missing filename)"));
+                            continue;
+                        }
+                    };
+                    let dest = mods_dir.join(filename);
+                    match download_to_if_missing(app, client, url, &dest, None).await {
+                        Ok(_) => installed += 1,
+                        Err(e) => {
+                            skipped.push(format!("supplement {filename} ({e})"));
+                            emit_progress(app, format!("Skip supplement {filename}: {e}"), "warn");
+                        }
+                    }
+                }
+                "curseforge" => {
+                    let file_id = match sup.file_id {
+                        Some(id) => id,
+                        None => {
+                            skipped.push(format!("supplement {display} (missing file_id)"));
+                            continue;
+                        }
+                    };
+                    let filename = match &sup.filename {
+                        Some(f) => f,
+                        None => {
+                            skipped.push(format!("supplement {display} (missing filename)"));
+                            continue;
+                        }
+                    };
+                    let url = curseforge_cdn_url(file_id, filename);
+                    let dest = mods_dir.join(filename);
+                    match download_to_if_missing(app, client, &url, &dest, None).await {
+                        Ok(_) => installed += 1,
+                        Err(e) => {
+                            skipped.push(format!("supplement {filename} ({e})"));
+                            emit_progress(app, format!("Skip supplement {filename}: {e}"), "warn");
+                        }
+                    }
+                }
+                other => {
+                    skipped.push(format!("supplement {display} (unsupported source {other})"));
+                }
+            }
+        }
+    }
+
+    // Launcher profile + JVM args + windowed default
+    upsert_options_txt_setting(mc_dir, "fullscreen", "false")?;
+    let java_args = java_args_for_minecraft(profile.java_xmx_gb);
+    emit_progress(app, format!("Java args (auto-tuned): {java_args}"), "info");
+    let launcher_profile_id = format!("mmle5-{}", profile.id);
+    upsert_launcher_profile(
+        mc_dir,
+        &launcher_profile_id,
+        &profile.name,
+        &version_id,
+        Some(&java_args),
+        profile.icon.as_deref(),
+    )?;
+
+    let _ = fs::remove_file(&mrpack_path);
+
+    Ok(InstallReport {
+        profile_name: profile.name.clone(),
+        minecraft_version: mc_version,
+        loader_version,
+        mods_installed: installed,
+        shaders_installed: 0,
+        resource_packs_installed: 0,
+        skipped,
+    })
 }
 
 async fn modrinth_pick_version(
@@ -947,6 +1410,123 @@ async fn modrinth_pick_shader_version(
 //     the call returns Err so the caller knows to skip / report
 // Logs the outcome (already-present vs downloaded vs verified) so the
 // install report shows what was reused vs fetched.
+// Sha1-keyed content-addressed cache for mod jars. Lives in app local data,
+// shared across all installs and across all profiles, so reinstalling a
+// modpack (which `backup_existing_mods` empties out) skips the network on
+// every file the manifest already pinned by sha1.
+fn mod_cache_dir(app: &AppHandle) -> Option<PathBuf> {
+    app.path()
+        .app_local_data_dir()
+        .ok()
+        .map(|d| d.join("mod-cache"))
+}
+
+// Walk known on-disk locations for jars/zips and pull any missing ones into
+// the sha1-keyed cache. Called once at install start. Cheap if cache is
+// already primed (hash + skip-if-present); valuable on first install with
+// the cache build, or after switching from a profile that downloaded files
+// the new profile also needs. Best-effort throughout — IO errors per file
+// are silently skipped so a busted file in mods.backup-* never blocks an
+// install.
+async fn prime_cache_from_disk(app: &AppHandle, mc_dir: &Path) -> u32 {
+    let cache_dir = match mod_cache_dir(app) {
+        Some(d) => d,
+        None => return 0,
+    };
+    if fs::create_dir_all(&cache_dir).is_err() {
+        return 0;
+    }
+
+    let mut sources: Vec<PathBuf> = vec![
+        mc_dir.join("mods"),
+        mc_dir.join("shaderpacks"),
+        mc_dir.join("resourcepacks"),
+    ];
+    if let Ok(rd) = fs::read_dir(mc_dir) {
+        for entry in rd.filter_map(|e| e.ok()) {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.starts_with("mods.backup-") || name.starts_with("mods.backup.") {
+                sources.push(entry.path());
+            }
+        }
+    }
+
+    let mut imported = 0u32;
+    for src_dir in sources {
+        let Ok(rd) = fs::read_dir(&src_dir) else { continue };
+        for entry in rd.filter_map(|e| e.ok()) {
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
+            }
+            let ext_ok = path
+                .extension()
+                .and_then(|e| e.to_str())
+                .map(|e| {
+                    let l = e.to_ascii_lowercase();
+                    l == "jar" || l == "zip"
+                })
+                .unwrap_or(false);
+            if !ext_ok {
+                continue;
+            }
+            let sha1 = match hash_sha1_of(&path).await {
+                Ok(s) => s,
+                Err(_) => continue,
+            };
+            let cache_file = cache_dir.join(format!("{sha1}.bin"));
+            if cache_file.exists() {
+                continue;
+            }
+            if fs::copy(&path, &cache_file).is_ok() {
+                imported += 1;
+            }
+        }
+    }
+    if imported > 0 {
+        emit_progress(
+            app,
+            format!("Primed cache with {imported} existing file(s) from .minecraft"),
+            "info",
+        );
+    }
+    imported
+}
+
+// CurseForge's auth-free CDN serves files at /files/<file_id/1000>/<file_id%1000>/<filename>
+// where the trailing chunk is zero-padded to 3 digits. So file 4926069 lives
+// at /files/4926/069/, and 6402485 at /files/6402/485/. Older 6-digit IDs
+// (e.g. 999999) work the same: 999/999/.
+fn curseforge_cdn_url(file_id: u64, filename: &str) -> String {
+    let high = file_id / 1000;
+    let low = file_id % 1000;
+    format!("https://edge.forgecdn.net/files/{high}/{low:03}/{filename}")
+}
+
+fn copy_no_clobber_replace(src: &Path, dest: &Path) -> Result<(), String> {
+    if let Some(parent) = dest.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("mkdir {}: {e}", parent.display()))?;
+    }
+    fs::copy(src, dest).map_err(|e| format!("copy {}: {e}", dest.display()))?;
+    Ok(())
+}
+
+// Cache key for `download_to_if_missing`. Prefer the manifest-pinned sha1
+// (stable across URL changes, dedupes content shared by multiple profiles).
+// Falls back to sha1(url) when there's no expected hash — this lets
+// supplements (where YAML has no sha1) and any other no-hash callers benefit
+// from caching too. Different keyspace; will never collide with content
+// hashes in practice.
+fn cache_key_for(expected_sha1: Option<&str>, url: &str) -> String {
+    if let Some(s) = expected_sha1 {
+        return s.to_ascii_lowercase();
+    }
+    let mut hasher = Sha1::new();
+    hasher.update(b"url:");
+    hasher.update(url.as_bytes());
+    hex::encode(hasher.finalize())
+}
+
 async fn download_to_if_missing(
     app: &AppHandle,
     client: &reqwest::Client,
@@ -1002,6 +1582,34 @@ async fn download_to_if_missing(
         }
     }
 
+    // Cache lookup. For sha1-keyed entries we verify after copy (guards
+    // against torn writes / disk rot). For url-keyed entries we trust the
+    // cache: there's no integrity reference to check against, and corruption
+    // there is a local-disk problem the user can resolve by clearing the
+    // cache dir.
+    let cache_key = cache_key_for(expected_sha1, url);
+    if let Some(cache) = mod_cache_dir(app) {
+        let cache_file = cache.join(format!("{cache_key}.bin"));
+        if cache_file.exists() {
+            copy_no_clobber_replace(&cache_file, dest)?;
+            if let Some(expected) = expected_sha1 {
+                match hash_sha1_of(dest).await {
+                    Ok(actual) if actual.eq_ignore_ascii_case(expected) => {
+                        emit_progress(app, format!("From cache: {filename}"), "info");
+                        return Ok(true);
+                    }
+                    _ => {
+                        let _ = fs::remove_file(&cache_file);
+                        let _ = fs::remove_file(dest);
+                    }
+                }
+            } else {
+                emit_progress(app, format!("From cache: {filename}"), "info");
+                return Ok(true);
+            }
+        }
+    }
+
     emit_progress(app, format!("Downloading {filename}"), "info");
     download_to(client, url, dest).await?;
 
@@ -1014,6 +1622,14 @@ async fn download_to_if_missing(
                 &actual[..8.min(actual.len())],
                 &expected[..8.min(expected.len())]
             ));
+        }
+    }
+    // Save to cache (sha1-keyed or url-keyed, same code path now).
+    // Best-effort — failures here shouldn't fail install.
+    if let Some(cache) = mod_cache_dir(app) {
+        if fs::create_dir_all(&cache).is_ok() {
+            let cache_file = cache.join(format!("{cache_key}.bin"));
+            let _ = fs::copy(dest, &cache_file);
         }
     }
     Ok(true)
@@ -1317,6 +1933,7 @@ fn upsert_launcher_profile(
     name: &str,
     version_id: &str,
     java_args: Option<&str>,
+    icon: Option<&str>,
 ) -> Result<(), String> {
     let path = mc_dir.join("launcher_profiles.json");
     let mut root: Value = if path.exists() {
@@ -1327,13 +1944,19 @@ fn upsert_launcher_profile(
         json!({ "profiles": {}, "settings": {}, "version": 3 })
     };
     let now = rfc3339_now();
+    // Accept a vanilla block name or a `data:image/png;base64,...` URI; the
+    // launcher renders both. Empty/missing falls back to Crafting_Table.
+    let resolved_icon = icon
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or("Crafting_Table");
     let mut entry = json!({
         "name": name,
         "type": "custom",
         "created": now,
         "lastUsed": now,
         "lastVersionId": version_id,
-        "icon": "Crafting_Table",
+        "icon": resolved_icon,
     });
     if let Some(args) = java_args {
         entry
@@ -1429,12 +2052,6 @@ async fn install_profile(
             profile.name
         ));
     }
-    if profile.loader != "fabric" && profile.loader != "neoforge" {
-        return Err(format!(
-            "Unsupported loader '{}' on profile '{}'.",
-            profile.loader, profile.name
-        ));
-    }
 
     let mc_dir = match minecraft_dir.filter(|s| !s.is_empty()) {
         Some(p) => PathBuf::from(p),
@@ -1448,8 +2065,34 @@ async fn install_profile(
     }
 
     let client = http_client();
-    let loader_name = profile.loader.clone();
-    let mc_version = if profile.minecraft_version.eq_ignore_ascii_case("latest") {
+
+    // Modpack profile: download .mrpack, parse manifest, install loader
+    // from manifest deps, fetch every file in the manifest, copy overrides.
+    if let Some(mp) = profile.modpack.clone() {
+        if mp.source != "modrinth-modpack" {
+            return Err(format!(
+                "Unsupported modpack source '{}' (expected modrinth-modpack)",
+                mp.source
+            ));
+        }
+        return install_modpack_profile(&app, &client, &mc_dir, &profile, &mp.slug).await;
+    }
+
+    let loader_name = profile
+        .loader
+        .clone()
+        .ok_or("profile has no `loader` and no `modpack` field")?;
+    if loader_name != "fabric" && loader_name != "neoforge" {
+        return Err(format!(
+            "Unsupported loader '{}' on profile '{}'.",
+            loader_name, profile.name
+        ));
+    }
+    let mc_version_raw = profile
+        .minecraft_version
+        .clone()
+        .ok_or("profile has no `minecraft_version` and no `modpack` field")?;
+    let mc_version = if mc_version_raw.eq_ignore_ascii_case("latest") {
         emit_progress(&app, "Resolving latest Minecraft release...", "info");
         let v = fetch_latest_minecraft_version(&client).await?;
         emit_progress(
@@ -1459,7 +2102,7 @@ async fn install_profile(
         );
         v.release
     } else {
-        profile.minecraft_version.clone()
+        mc_version_raw
     };
 
     let (loader_version, version_id) = match loader_name.as_str() {
@@ -1504,7 +2147,7 @@ async fn install_profile(
                 );
                 ("(existing)".to_string(), existing)
             } else {
-                install_neoforge(&app, &client, &mc_version, &mc_dir).await?
+                install_neoforge(&app, &client, &mc_version, &mc_dir, None).await?
             }
         }
         _ => unreachable!("loader gate above rejects everything else"),
@@ -1532,10 +2175,12 @@ async fn install_profile(
         &profile.name,
         &version_id,
         Some(&java_args),
+        profile.icon.as_deref(),
     )?;
 
     let mods_dir = mc_dir.join("mods");
     fs::create_dir_all(&mods_dir).map_err(|e| format!("mkdir mods: {e}"))?;
+    let _ = prime_cache_from_disk(&app, &mc_dir).await;
     backup_existing_mods(&app, &mods_dir)?;
 
     let mut installed = 0u32;
@@ -2288,6 +2933,315 @@ async fn identify_jar(path: String) -> Result<JarIdentity, String> {
     })
 }
 
+#[derive(Deserialize)]
+struct ModrinthProjectMeta {
+    #[serde(default)]
+    title: Option<String>,
+    // Modrinth says one of: required, optional, unsupported, unknown.
+    #[serde(default)]
+    server_side: Option<String>,
+}
+
+async fn modrinth_project_meta(
+    client: &reqwest::Client,
+    slug: &str,
+) -> Result<ModrinthProjectMeta, String> {
+    let url = format!("{MODRINTH_API}/project/{slug}");
+    let resp = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("modrinth project {slug}: {e}"))?;
+    if !resp.status().is_success() {
+        return Err(format!("modrinth project {slug}: HTTP {}", resp.status()));
+    }
+    resp.json::<ModrinthProjectMeta>()
+        .await
+        .map_err(|e| format!("modrinth project {slug} json: {e}"))
+}
+
+#[derive(Serialize)]
+struct ServerPackReport {
+    profile_name: String,
+    minecraft_version: String,
+    loader: String,
+    output_path: String,
+    mods_included: u32,
+    skipped: Vec<String>,
+}
+
+fn build_server_readme(
+    profile_name: &str,
+    profile_id: &str,
+    mc_version: &str,
+    loader: &str,
+    included: &[String],
+    skipped: &[String],
+) -> String {
+    let mut s = String::new();
+    s.push_str(&format!("# {profile_name} — Server Pack\n\n"));
+    s.push_str(&format!(
+        "Generated by Minecraft Mods, Easy from profile `{profile_id}`.\n\n\
+         Minecraft **{mc_version}** · loader **{loader}**.\n\n",
+    ));
+    s.push_str("## Install\n\n");
+    s.push_str("1. Make a fresh folder for your server (e.g. `my-server/`).\n");
+    match loader {
+        "fabric" => {
+            s.push_str(
+                "2. Download the Fabric server installer from <https://fabricmc.net/use/server/>.\n",
+            );
+            s.push_str(&format!(
+                "3. Run the installer with the matching Minecraft version, e.g.:\n   ```\n   java -jar fabric-installer-<X.Y.Z>.jar server -mcversion {mc_version} -downloadMinecraft\n   ```\n",
+            ));
+            s.push_str(
+                "   This creates `fabric-server-launch.jar` and downloads the vanilla server jar.\n",
+            );
+            s.push_str("4. Drop the `mods/` folder from this zip into the server folder.\n");
+            s.push_str("5. Edit `eula.txt`: set `eula=true` (you must accept Mojang's EULA before the server runs).\n");
+            s.push_str("6. Start the server: `java -jar fabric-server-launch.jar nogui`\n\n");
+        }
+        "neoforge" => {
+            s.push_str(&format!(
+                "2. Download the NeoForge installer for MC {mc_version} — same major.minor prefix as the version your Minecraft Mods, Easy client picked. Browse releases at <https://projects.neoforged.net/neoforged/neoforge>.\n",
+            ));
+            s.push_str(
+                "3. Run the installer in your server folder:\n   ```\n   java -jar neoforge-<version>-installer.jar --installServer .\n   ```\n",
+            );
+            s.push_str("4. Drop the `mods/` folder from this zip into the server folder.\n");
+            s.push_str("5. Edit `eula.txt`: set `eula=true` (you must accept Mojang's EULA before the server runs).\n");
+            s.push_str("6. Start the server using the script the installer generated (`run.sh` on Linux/macOS, `run.bat` on Windows).\n\n");
+        }
+        other => {
+            s.push_str(&format!(
+                "2. Install the {other} server loader for MC {mc_version} per the loader's documentation.\n",
+            ));
+            s.push_str("3. Drop the `mods/` folder from this zip into the server folder.\n");
+            s.push_str("4. Accept the EULA in `eula.txt` and start the server.\n\n");
+        }
+    }
+    s.push_str("## Mods included\n\n");
+    if included.is_empty() {
+        s.push_str("_None._\n\n");
+    } else {
+        for line in included {
+            s.push_str(&format!("- {line}\n"));
+        }
+        s.push('\n');
+    }
+    if !skipped.is_empty() {
+        s.push_str("## Skipped (client-only or unavailable)\n\n");
+        for line in skipped {
+            s.push_str(&format!("- {line}\n"));
+        }
+        s.push('\n');
+    }
+    s.push_str(
+        "Players need a matching mod set on the **client** to join. Run the same profile in Minecraft Mods, Easy on each player's machine to get a compatible client.\n",
+    );
+    s
+}
+
+fn write_server_pack_zip(
+    target: &Path,
+    mod_files: &[(String, Vec<u8>)],
+    readme: &str,
+) -> Result<(), String> {
+    if let Some(parent) = target.parent() {
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent).map_err(|e| format!("mkdir {}: {e}", parent.display()))?;
+        }
+    }
+    let f = fs::File::create(target).map_err(|e| format!("create {}: {e}", target.display()))?;
+    let mut zip = zip::ZipWriter::new(f);
+    let opts: zip::write::SimpleFileOptions = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated);
+
+    zip.start_file("README.md", opts)
+        .map_err(|e| format!("zip README: {e}"))?;
+    zip.write_all(readme.as_bytes())
+        .map_err(|e| format!("zip write README: {e}"))?;
+
+    // Empty mods/ folder marker — if every mod is client-only the user still
+    // needs the dir to exist so they have somewhere to drop server-side mods.
+    zip.add_directory("mods/", opts)
+        .map_err(|e| format!("zip mkdir mods/: {e}"))?;
+
+    for (name, bytes) in mod_files {
+        zip.start_file(format!("mods/{name}"), opts)
+            .map_err(|e| format!("zip {name}: {e}"))?;
+        zip.write_all(bytes)
+            .map_err(|e| format!("zip write {name}: {e}"))?;
+    }
+    zip.finish().map_err(|e| format!("zip finish: {e}"))?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn download_server_pack(
+    app: AppHandle,
+    profile_id: String,
+    target_path: String,
+) -> Result<ServerPackReport, String> {
+    let profiles = read_profiles(&app)?;
+    let profile = profiles
+        .into_iter()
+        .find(|p| p.id == profile_id)
+        .ok_or_else(|| format!("Unknown profile: {profile_id}"))?;
+    if profile.modpack.is_some() {
+        return Err(format!(
+            "Server-pack export isn't supported for modpack profiles like '{}' — install it client-side first.",
+            profile.name
+        ));
+    }
+    let loader_name = profile
+        .loader
+        .clone()
+        .ok_or("profile has no loader")?;
+    if loader_name != "fabric" && loader_name != "neoforge" {
+        return Err(format!(
+            "Server-pack export only supports Fabric and NeoForge — '{}' uses {}.",
+            profile.name, loader_name
+        ));
+    }
+
+    let target = PathBuf::from(&target_path);
+    if target.as_os_str().is_empty() {
+        return Err("No output path selected".to_string());
+    }
+
+    let client = http_client();
+    let mc_version_raw = profile
+        .minecraft_version
+        .clone()
+        .ok_or("profile has no minecraft_version")?;
+    let mc_version = if mc_version_raw.eq_ignore_ascii_case("latest") {
+        emit_progress(&app, "Resolving latest Minecraft release...", "info");
+        let v = fetch_latest_minecraft_version(&client).await?;
+        emit_progress(&app, format!("Latest Minecraft release is {}", v.release), "ok");
+        v.release
+    } else {
+        mc_version_raw
+    };
+
+    emit_progress(
+        &app,
+        format!(
+            "Building server pack for '{}' (MC {mc_version}, {})",
+            profile.name, loader_name
+        ),
+        "info",
+    );
+
+    let mut mod_files: Vec<(String, Vec<u8>)> = Vec::new();
+    let mut included: Vec<String> = Vec::new();
+    let mut skipped: Vec<String> = Vec::new();
+
+    for m in &profile.mods {
+        let display = ref_display_name(&m.source, &m.slug, &m.filename);
+        if m.source != "modrinth" {
+            skipped.push(format!("{display} (unsupported source {})", m.source));
+            continue;
+        }
+        let slug = match &m.slug {
+            Some(s) => s.clone(),
+            None => {
+                skipped.push(format!("{display} (modrinth source missing slug)"));
+                continue;
+            }
+        };
+        emit_progress(&app, format!("Checking {slug}..."), "info");
+        let meta = match modrinth_project_meta(&client, &slug).await {
+            Ok(meta) => meta,
+            Err(e) => {
+                skipped.push(format!("{slug} ({e})"));
+                emit_progress(&app, format!("Skip {slug}: {e}"), "warn");
+                continue;
+            }
+        };
+        let server_side = meta.server_side.as_deref().unwrap_or("unknown");
+        if server_side == "unsupported" {
+            skipped.push(format!("{slug} (client-only)"));
+            emit_progress(&app, format!("Skip {slug} (client-only)"), "info");
+            continue;
+        }
+        let pretty = meta.title.clone().unwrap_or_else(|| slug.clone());
+        let ver = match modrinth_pick_version(&client, &slug, &mc_version, &loader_name).await {
+            Ok(Some(v)) => v,
+            Ok(None) => {
+                skipped.push(format!(
+                    "{slug} (no version for MC {mc_version} + {loader_name})"
+                ));
+                emit_progress(&app, format!("Skip {slug} (no compatible version)"), "warn");
+                continue;
+            }
+            Err(e) => {
+                skipped.push(format!("{slug} ({e})"));
+                emit_progress(&app, format!("Skip {slug}: {e}"), "warn");
+                continue;
+            }
+        };
+        if !ver.game_versions.iter().any(|g| g == &mc_version) {
+            skipped.push(format!(
+                "{slug} {} (supports {} not {mc_version})",
+                ver.version_number,
+                ver.game_versions.join(", ")
+            ));
+            continue;
+        }
+        let file = ver
+            .files
+            .iter()
+            .find(|f| f.primary)
+            .or_else(|| ver.files.first())
+            .ok_or_else(|| format!("no files for {slug}"))?;
+
+        emit_progress(&app, format!("Downloading {}", file.filename), "info");
+        let bytes = client
+            .get(&file.url)
+            .send()
+            .await
+            .map_err(|e| format!("download {slug}: {e}"))?
+            .bytes()
+            .await
+            .map_err(|e| format!("download {slug} body: {e}"))?
+            .to_vec();
+        mod_files.push((file.filename.clone(), bytes));
+        included.push(format!("{pretty} {} (`{}`)", ver.version_number, file.filename));
+    }
+
+    emit_progress(&app, format!("Writing zip to {}", target.display()), "info");
+    let readme = build_server_readme(
+        &profile.name,
+        &profile.id,
+        &mc_version,
+        &loader_name,
+        &included,
+        &skipped,
+    );
+    write_server_pack_zip(&target, &mod_files, &readme)?;
+
+    let count = mod_files.len() as u32;
+    emit_progress(
+        &app,
+        format!(
+            "Wrote {count} mod{} to {}",
+            if count == 1 { "" } else { "s" },
+            target.display()
+        ),
+        "ok",
+    );
+
+    Ok(ServerPackReport {
+        profile_name: profile.name,
+        minecraft_version: mc_version,
+        loader: loader_name,
+        output_path: target.to_string_lossy().to_string(),
+        mods_included: count,
+        skipped,
+    })
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -2307,6 +3261,7 @@ pub fn run() {
             refresh_data_cache,
             check_for_updates,
             apply_update,
+            download_server_pack,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

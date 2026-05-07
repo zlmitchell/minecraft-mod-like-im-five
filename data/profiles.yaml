@@ -23,6 +23,7 @@ profiles:
     loader: fabric
     color: "#00bfa5"
     accent: speed
+    icon: Diamond_Block
     mods:
       - { source: modrinth, slug: fabric-api,             role: required }
       - { source: modrinth, slug: sodium,                 role: performance }
@@ -45,6 +46,66 @@ profiles:
     resource_packs:
       - { source: modrinth, slug: faithful-64x, default: true }
 
+  # ----- Modpack profiles (Modrinth-hosted .mrpack) -----
+  # These pin their own MC + loader via the .mrpack manifest, so we don't
+  # set minecraft_version / loader / mods here. The installer reads the
+  # manifest at install time and fetches every dep automatically.
+
+  - id: rising-legends
+    name: Rising Legends
+    short_description: RLCraft-inspired survival fantasy on Fabric — dragons, dungeons, deadly mobs
+    modpack: { source: modrinth-modpack, slug: rl-craft }
+    color: "#a02828"
+    icon: TNT
+    java_xmx_gb: 8
+
+  - id: prominence-2
+    name: Prominence II RPG
+    short_description: Hasturian Era — questing RPG with magic, classes, and dimensions
+    modpack: { source: modrinth-modpack, slug: prominence-2-fabric }
+    color: "#7c2c5c"
+    icon: Enchanting_Table
+    java_xmx_gb: 8
+
+  - id: homestead
+    name: Homestead
+    short_description: Cozy farming and homemaking modpack
+    modpack: { source: modrinth-modpack, slug: homestead }
+    color: "#6b8e23"
+    icon: Cake
+    java_xmx_gb: 6
+    # Homestead's .mrpack manifest doesn't ship the FTB mods at all — the
+    # pack expects CozyStudiosCore to fetch them at runtime via CurseForge,
+    # which doesn't work in our Modrinth-only flow. The seven mods below are
+    # the ones the pack's `config/cozystudioscore/auto_ftb_mods.json` asks
+    # for. `source: curseforge` resolves to forgecdn at install time —
+    # find each file_id at curseforge.com/.../<slug>/files/<file_id>.
+    # When Homestead bumps to a newer release, refresh these in lockstep.
+    modpack_supplements:
+      - { source: curseforge, file_id: 7296747, filename: ftb-library-fabric-2001.2.12.jar }
+      - { source: curseforge, file_id: 7499808, filename: ftb-teams-fabric-2001.3.2.jar }
+      - { source: curseforge, file_id: 7609946, filename: ftb-essentials-fabric-2001.2.4.jar }
+      - { source: curseforge, file_id: 7909593, filename: ftb-quests-fabric-2001.4.21.jar }
+      - { source: curseforge, file_id: 4926069, filename: ftb-filter-system-fabric-1.0.2.jar }
+      - { source: curseforge, file_id: 6402485, filename: ftb-xmod-compat-fabric-2.1.3.jar }
+      - { source: curseforge, file_id: 5698979, filename: questsadditions-fabric-1.20.1-1.4.6.jar }
+
+  - id: arcane-dragons
+    name: Arcane Dragons
+    short_description: Dragon-themed magic and adventure on Fabric
+    modpack: { source: modrinth-modpack, slug: arcanedragons }
+    color: "#5a3a8e"
+    icon: Bookshelf
+    java_xmx_gb: 8
+
+  - id: dragon-realm
+    name: Dragon Realm
+    short_description: Dragon-rider fantasy modpack on Fabric
+    modpack: { source: modrinth-modpack, slug: dragon-realm }
+    color: "#c66f1f"
+    icon: Carved_Pumpkin
+    java_xmx_gb: 8
+
   - id: adventure-content
     name: Adventure with Cobblemon and Create
     short_description: Pokémon-style creatures, mechanical contraptions, exploration
@@ -52,6 +113,7 @@ profiles:
     loader: neoforge
     color: "#ff6f00"
     accent: adventure
+    icon: Pumpkin
     java_xmx_gb: 10  # big modpack — bumps the auto-detected default
     mods:
       - { source: modrinth, slug: kotlin-for-forge, role: required }   # Cobblemon language provider
