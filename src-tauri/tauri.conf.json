@@ -24,7 +24,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["nsis", "deb", "rpm", "appimage", "dmg"],
     "resources": [
       "../data/*"
     ],
@@ -35,14 +35,22 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "createUpdaterArtifacts": true
+    "createUpdaterArtifacts": true,
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    }
   },
   "plugins": {
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDU5NkVFMDEwODU2Q0RCMjQKUldRazIyeUZFT0J1V1RuVkNPcXN3QXRCWnJnMFVjbWduTHA5M1JYR3NvMUN2WjlsRWkweXVqcHYK",
       "endpoints": [
         "https://github.com/zlmitchell/minecraft-mod-like-im-five/releases/latest/download/latest.json"
-      ]
+      ],
+      "windows": {
+        "installMode": "quiet"
+      }
     }
   }
 }
