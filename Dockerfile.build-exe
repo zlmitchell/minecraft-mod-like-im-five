@@ -29,9 +29,20 @@ RUN rustup target add x86_64-pc-windows-msvc
 WORKDIR /app
 COPY . /app
 
-# Placeholder RGBA icons so tauri::generate_context! validation passes.
-RUN if [ ! -f src-tauri/icons/32x32.png ]; then \
-      mkdir -p src-tauri/icons && \
+# Always regenerate icons from icon.png if present (the real artwork). The
+# previous `if [ ! -f 32x32.png ]` guard meant a stale committed 32x32.png
+# would shadow updates to icon.png — which silently shipped a purple square
+# as the Windows icon. Now icon.png is the source of truth; -auto-resize
+# packs a proper multi-res ICO. Falls back to a purple placeholder set only
+# when icon.png isn't there at all (cold CI without artwork).
+RUN mkdir -p src-tauri/icons && \
+    if [ -f src-tauri/icons/icon.png ]; then \
+      convert src-tauri/icons/icon.png -resize 32x32   PNG32:src-tauri/icons/32x32.png && \
+      convert src-tauri/icons/icon.png -resize 128x128 PNG32:src-tauri/icons/128x128.png && \
+      convert src-tauri/icons/icon.png -resize 256x256 PNG32:src-tauri/icons/128x128@2x.png && \
+      convert src-tauri/icons/icon.png -define icon:auto-resize=16,32,48,64,128,256 src-tauri/icons/icon.ico && \
+      cp src-tauri/icons/128x128.png src-tauri/icons/icon.icns ; \
+    else \
       convert -size 32x32   xc:'#7c4dff' -alpha set PNG32:src-tauri/icons/32x32.png && \
       convert -size 128x128 xc:'#7c4dff' -alpha set PNG32:src-tauri/icons/128x128.png && \
       convert -size 256x256 xc:'#7c4dff' -alpha set PNG32:src-tauri/icons/128x128@2x.png && \
