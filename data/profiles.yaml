@@ -16,30 +16,6 @@ version: 1
 #                    editing the URL.
 
 profiles:
-  - id: latest-beautiful
-    name: Latest & Beautiful
-    short_description: Newest stable Minecraft with shaders and smooth performance
-    minecraft_version: "1.21.9"
-    loader: fabric
-    color: "#7c4dff"
-    accent: shaders
-    mods:
-      - { source: modrinth, slug: fabric-api,             role: required }
-      - { source: modrinth, slug: sodium,                 role: performance }
-      - { source: modrinth, slug: iris,                   role: shaders }
-      - { source: modrinth, slug: lithium,                role: performance }
-      - { source: modrinth, slug: indium,                 role: compat }
-      - { source: modrinth, slug: sodium-extra,           role: performance }
-      - { source: modrinth, slug: reeses-sodium-options,  role: ui }
-      - { source: modrinth, slug: modmenu,                role: ui }
-      - { source: modrinth, slug: yacl,                   role: required }
-      - { source: modrinth, slug: lambdynamiclights,      role: visual }
-      - { source: modrinth, slug: continuity,             role: visual }
-    shaders:
-      - { source: modrinth, slug: complementary-reimagined, default: true }
-    resource_packs:
-      - { source: modrinth, slug: faithful-64x, default: true }
-
   - id: performance-edge
     name: Bleeding Edge Performance
     short_description: Always the latest Minecraft release — auto-resolves at install
