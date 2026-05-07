@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.0.0](https://github.com/zlmitchell/minecraft-mod-like-im-five/compare/v0.4.0...v1.0.0) (2026-05-07)
+
+
+### ⚠ BREAKING CHANGES
+
+* **profiles:** profile id "latest-beautiful" no longer exists. Anyone with that profile installed via the launcher will keep working (.minecraft entry is unaffected), but the profile won't appear in the app's card list.
+
+### Features
+
+* NeoForge, modpack profiles, mod cache, server-pack export ([d93d786](https://github.com/zlmitchell/minecraft-mod-like-im-five/commit/d93d786d10e0e9ffaee3d5d50dd0cc478f14c41b))
+* **profiles:** remove "Latest & Beautiful" profile ([8f375b0](https://github.com/zlmitchell/minecraft-mod-like-im-five/commit/8f375b0a1ab82301bf934f7459a9a0058dda68ff))
+
 ## [0.4.0](https://github.com/zlmitchell/minecraft-mod-like-im-five/compare/v0.3.0...v0.4.0) (2026-05-07)
 
 
