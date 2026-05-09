@@ -18,7 +18,6 @@ const cardsEl = document.getElementById("profiles");
 const dropEl = document.getElementById("dropzone");
 const logEl = document.getElementById("log");
 const logOverlayEl = document.getElementById("log-overlay");
-const logToggleBtn = document.getElementById("log-toggle");
 const logCloseBtn = document.getElementById("log-close-btn");
 const versionLineEl = document.getElementById("version-line");
 const checkUpdatesBtn = document.getElementById("check-updates-btn");
@@ -27,32 +26,24 @@ const updatesListEl = document.getElementById("updates-list");
 const updateAllBtn = document.getElementById("update-all-btn");
 const updatesCloseBtn = document.getElementById("updates-close-btn");
 
-// Tracks an explicit user dismissal so an in-flight install's progress
-// emits don't immediately re-open the overlay the user just closed.
-// Reset by showLogOverlay() (manual reopen via the pill) and by the
-// install handlers when they clear the log to begin a new run.
-let logUserDismissed = false;
-
-// Show overlay (and hide the floating "Log" pill). Once a line lands the
-// user has seen something happen — the overlay stays open until they hit ×.
+// Expand the overlay to its full Activity panel.
 function showLogOverlay() {
   logOverlayEl.hidden = false;
-  logToggleBtn.hidden = true;
-  logUserDismissed = false;
+  logOverlayEl.classList.remove("minimized");
 }
 
-// Hide the overlay but leave the lines in place; expose the "Log" pill so the
-// user can pop it back open without losing history.
-function hideLogOverlay() {
-  logOverlayEl.hidden = true;
-  logToggleBtn.hidden = logEl.childElementCount === 0;
-  logUserDismissed = true;
+// Collapse the overlay to a single-line ribbon at the bottom of the screen.
+// The most recent log line stays visible (CSS hides the rest); clicking the
+// ribbon re-expands. Subsequent log lines update the visible line in place.
+function minimizeLogOverlay() {
+  logOverlayEl.hidden = false;
+  logOverlayEl.classList.add("minimized");
 }
 
-// Forget the dismissal state (e.g. when a new install begins). Subsequent
-// log lines will auto-open the overlay again.
-function resetLogDismissal() {
-  logUserDismissed = false;
+// Forget any prior minimize state (e.g. when a new install begins). The next
+// logLine() will pop the overlay open in its full form.
+function resetLogOverlay() {
+  logOverlayEl.classList.remove("minimized");
 }
 
 async function refreshMcDirStatus() {
@@ -93,11 +84,10 @@ function logLine(message, level = "info") {
   div.textContent = message;
   logEl.appendChild(div);
   logEl.scrollTop = logEl.scrollHeight;
-  if (logUserDismissed) {
-    // User closed the overlay during an active run — keep it closed but
-    // surface the "Log" pill so they know progress is still happening.
-    logToggleBtn.hidden = false;
-  } else {
+  // First line of a run pops the overlay open in full. If the user has
+  // since minimized it, leave it minimized — the new line just becomes the
+  // visible last-child via CSS.
+  if (logOverlayEl.hidden) {
     showLogOverlay();
   }
 }
@@ -224,8 +214,18 @@ async function init() {
   updatesCloseBtn.addEventListener("click", () => {
     updatesPanel.hidden = true;
   });
-  logCloseBtn.addEventListener("click", hideLogOverlay);
-  logToggleBtn.addEventListener("click", showLogOverlay);
+  // X button minimizes; clicking the minimized ribbon expands again. The
+  // stopPropagation keeps an X click from bubbling into the overlay-level
+  // expand handler when the overlay happens to be in expanded state.
+  logCloseBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    minimizeLogOverlay();
+  });
+  logOverlayEl.addEventListener("click", () => {
+    if (logOverlayEl.classList.contains("minimized")) {
+      showLogOverlay();
+    }
+  });
 }
 
 function renderProfiles(profiles) {
@@ -277,7 +277,7 @@ function renderProfiles(profiles) {
 
 async function installProfile(profile) {
   logEl.innerHTML = "";
-  resetLogDismissal();
+  resetLogOverlay();
 
   try {
     const running = await invoke("find_minecraft_processes");
@@ -350,7 +350,7 @@ async function downloadServerPack(profile) {
   if (!target) return;
 
   logEl.innerHTML = "";
-  resetLogDismissal();
+  resetLogOverlay();
   logLine(`Building server pack for "${profile.name}"...`);
   try {
     const report = await invoke("download_server_pack", {
@@ -416,7 +416,7 @@ async function runCheckForUpdates() {
   checkUpdatesBtn.disabled = true;
   checkUpdatesBtn.textContent = "Checking...";
   logEl.innerHTML = "";
-  resetLogDismissal();
+  resetLogOverlay();
   try {
     pendingUpdates = await invoke("check_for_updates", {
       minecraftDir: activeMcDir(),

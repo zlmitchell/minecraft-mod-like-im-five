@@ -360,21 +360,20 @@ button.server-pack:disabled { opacity: 0.4; cursor: not-allowed; }
 .log-line.warn { color: var(--warn); }
 .log-line.bad { color: var(--bad); }
 
-.log-toggle {
-  position: fixed;
-  bottom: 24px;
-  right: 24px;
-  background: var(--card-bg);
-  color: var(--accent);
-  border: 2px solid var(--accent);
-  border-radius: 999px;
-  padding: 10px 18px;
-  font-size: 13px;
-  font-weight: 700;
+/* Minimized state: the overlay shrinks to a single-line ribbon showing only
+   the most recent log line. CSS hides the header and all but the last log
+   line; the whole element becomes a click target that expands it back. */
+.log-overlay.minimized {
   cursor: pointer;
-  box-shadow: var(--shadow);
-  z-index: 20;
-  transition: filter 0.15s;
+  max-height: none;
 }
 
-.log-toggle:hover { filter: brightness(1.05); }
+.log-overlay.minimized .log-header { display: none; }
+
+.log-overlay.minimized .log {
+  padding: 10px 16px;
+  overflow: hidden;
+  flex: 0 0 auto;
+}
+
+.log-overlay.minimized .log-line:not(:last-child) { display: none; }
