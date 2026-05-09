@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.1.0](https://github.com/zlmitchell/minecraft-mod-like-im-five/compare/v1.0.1...v1.1.0) (2026-05-09)
+
+
+### Features
+
+* **log:** X minimizes activity overlay to a last-line ribbon ([7f46579](https://github.com/zlmitchell/minecraft-mod-like-im-five/commit/7f465792ac797cb4186b1ef051911ea6c35cb64c))
+* **profiles:** add Morpho and Backyard Naturalist; supplement Rising Legends with FTB Teams ([5e65e41](https://github.com/zlmitchell/minecraft-mod-like-im-five/commit/5e65e41c3bc0fe59516eeca340c663a6db41cf5f))
+* **release:** NSIS-only Windows bundles, silent per-user upgrades ([e831438](https://github.com/zlmitchell/minecraft-mod-like-im-five/commit/e831438857bae646179ca916720c258926477fe8))
+
+
+### Bug Fixes
+
+* **log:** X button stays closed during in-flight installs ([4ad3b58](https://github.com/zlmitchell/minecraft-mod-like-im-five/commit/4ad3b58393b53609b920a9029306790eb9c31936))
+
 ## [1.0.1](https://github.com/zlmitchell/minecraft-mod-like-im-five/compare/v1.0.0...v1.0.1) (2026-05-07)
 
 

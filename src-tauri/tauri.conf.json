@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Minecraft Mods Easy",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "identifier": "com.zach.minecraftmodseasy",
   "build": {
     "frontendDist": "../src"
@@ -24,7 +24,13 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis", "deb", "rpm", "appimage", "dmg"],
+    "targets": [
+      "nsis",
+      "deb",
+      "rpm",
+      "appimage",
+      "dmg"
+    ],
     "resources": [
       "../data/*"
     ],
