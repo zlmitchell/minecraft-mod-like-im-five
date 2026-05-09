@@ -58,6 +58,10 @@ profiles:
     color: "#a02828"
     icon: TNT
     java_xmx_gb: 8
+    # The .mrpack manifest doesn't ship FTB Teams Fabric (CurseForge-only),
+    # but Rising Legends declares it as a hard dependency. Pin by file_id.
+    modpack_supplements:
+      - { source: curseforge, file_id: 6130783, filename: ftb-teams-fabric-2001.3.1.jar }
 
   - id: prominence-2
     name: Prominence II RPG
@@ -124,3 +128,53 @@ profiles:
       - { source: modrinth, slug: xaeros-minimap,   role: ui }
       - { source: modrinth, slug: appleskin,        role: ui }
       - { source: modrinth, slug: geckolib,         role: required }
+
+  - id: morpho
+    name: Morpho
+    short_description: Turn into any creature — Identity morphing across Alex's Mobs' 85+ animals
+    minecraft_version: "1.21.1"
+    loader: neoforge
+    color: "#3b6dd8"
+    icon: Carved_Pumpkin
+    java_xmx_gb: 8
+    # Slug notes:
+    #   identity            — original Draylar mod, FABRIC ONLY. Don't use.
+    #   identity-fix        — cross-loader fork; ships a NeoForge 1.21.1 build.
+    #   alexs-mobs          — official; caps at 1.20.1.
+    #   alexs-mobs(1.21.1)  — Raguto's community port for NeoForge 1.21.1.
+    #                         Requires its OWN port of Citadel (paren slug below).
+    # If/when the official Alex's Mobs ships 1.21.1, swap to slug `alexs-mobs`
+    # + `citadel` and drop the (1.21.1-port) versions.
+    mods:
+      - { source: modrinth, slug: identity-fix,           role: content }
+      - { source: modrinth, slug: "alexs-mobs(1.21.1)",   role: content }
+      - { source: modrinth, slug: "citadel-(1.21.1-port)", role: required }   # Alex's Mobs port dep
+      - { source: modrinth, slug: architectury-api,       role: required }   # Identity Fix dep
+      - { source: modrinth, slug: gabous-libs,            role: required }   # Identity Fix dep
+      - { source: modrinth, slug: geckolib,               role: required }
+      - { source: modrinth, slug: jei,                    role: ui }
+      - { source: modrinth, slug: jade,                   role: ui }
+      - { source: modrinth, slug: xaeros-minimap,         role: ui }
+      - { source: modrinth, slug: appleskin,              role: ui }
+
+  - id: backyard-naturalist
+    name: Backyard Naturalist
+    short_description: Wildlife and bugs — Naturalist plus butterflies, dragonflies, jumping spiders
+    minecraft_version: "1.21.1"
+    loader: neoforge
+    color: "#4a8b3a"
+    icon: Mycelium
+    java_xmx_gb: 6
+    # Combo: Naturalist (mammals/reptiles/amphibians/some bugs like fireflies)
+    # + Critters and Companions (dragonflies, leaf insects, jumping spiders,
+    # otters, etc.) + Bok's Banging Butterflies (butterfly + moth life cycles
+    # with nets, jars, and pollination).
+    mods:
+      - { source: modrinth, slug: naturalist,             role: content }
+      - { source: modrinth, slug: critters-and-companions, role: content }
+      - { source: modrinth, slug: boks-butterflies,       role: content }
+      - { source: modrinth, slug: geckolib,               role: required }   # Naturalist animations
+      - { source: modrinth, slug: jei,                    role: ui }
+      - { source: modrinth, slug: jade,                   role: ui }
+      - { source: modrinth, slug: xaeros-minimap,         role: ui }
+      - { source: modrinth, slug: appleskin,              role: ui }
