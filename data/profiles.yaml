@@ -58,10 +58,13 @@ profiles:
     color: "#a02828"
     icon: TNT
     java_xmx_gb: 8
-    # The .mrpack manifest doesn't ship FTB Teams Fabric (CurseForge-only),
-    # but Rising Legends declares it as a hard dependency. Pin by file_id.
+    # The .mrpack manifest doesn't ship FTB Teams / Library Fabric
+    # (CurseForge-only), but Rising Legends declares them as hard
+    # dependencies. Pin by file_id. FTB Teams 2001.3.1 requires Library
+    # 2001.2.0+; 2001.2.12 is the latest in the 1.20.1 series.
     modpack_supplements:
       - { source: curseforge, file_id: 6130783, filename: ftb-teams-fabric-2001.3.1.jar }
+      - { source: curseforge, file_id: 7296747, filename: ftb-library-fabric-2001.2.12.jar }
 
   - id: prominence-2
     name: Prominence II RPG
