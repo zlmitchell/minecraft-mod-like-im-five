@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.1](https://github.com/zlmitchell/minecraft-mod-like-im-five/compare/v1.1.0...v1.1.1) (2026-05-09)
+
+
+### Bug Fixes
+
+* **rising-legends:** supplement FTB Library Fabric to satisfy FTB Teams dep ([53d413c](https://github.com/zlmitchell/minecraft-mod-like-im-five/commit/53d413c4e2a824e96c610feab8cf6ffd8cfcb8c7))
+
 ## [1.1.0](https://github.com/zlmitchell/minecraft-mod-like-im-five/compare/v1.0.1...v1.1.0) (2026-05-09)
 
 
