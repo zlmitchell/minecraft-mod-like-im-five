@@ -203,3 +203,20 @@ profiles:
       - { source: modrinth, slug: jade,                   role: ui }
       - { source: modrinth, slug: xaeros-minimap,         role: ui }
       - { source: modrinth, slug: appleskin,              role: ui }
+
+  - id: prehistoric-era
+    name: Prehistoric Era
+    short_description: Aecht_Rob's Prehistoric Nature — 1000+ scientifically-accurate prehistoric creatures
+    minecraft_version: "1.12.2"
+    loader: forge
+    color: "#7a5a2c"
+    icon: Bookshelf
+    java_xmx_gb: 6
+    # Prehistoric Nature is Forge 1.12.2 only — by design; the author has
+    # actively chosen to keep deepening 1.12.2 rather than port. We install
+    # Forge via the MultiMC meta-upstream manifests (no GUI installer), and
+    # the Mojang launcher auto-downloads jre-legacy (Java 8) on first Play
+    # via the version JSON's inheritsFrom: "1.12.2".
+    mods:
+      - { source: modrinth, slug: prehistoric-nature,     role: content }
+      - { source: modrinth, slug: patchouli,              role: required }   # Prehistoric Nature dep

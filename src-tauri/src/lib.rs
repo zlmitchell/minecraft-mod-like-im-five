@@ -15,6 +15,19 @@ const NEOFORGE_VERSIONS_API: &str =
     "https://maven.neoforged.net/api/maven/versions/releases/net/neoforged/neoforge";
 const NEOFORGE_MAVEN_BASE: &str =
     "https://maven.neoforged.net/releases/net/neoforged/neoforge";
+// Classic Forge install path uses MultiMC's pre-extracted manifests instead
+// of running Forge's GUI installer JAR (which 1.12.2's installer is, with
+// no headless --installClient option). The version_manifests entries are
+// drop-in versions/<id>/<id>.json equivalents; the installer_manifests
+// entries describe the patches the GUI installer would have applied — for
+// 1.12.2 the processors array is empty, so no patching is needed.
+const FORGE_PROMOTIONS_URL: &str =
+    "https://files.minecraftforge.net/net/minecraftforge/forge/promotions_slim.json";
+const FORGE_MULTIMC_VERSION_MANIFEST_BASE: &str =
+    "https://raw.githubusercontent.com/MultiMC/meta-upstream/master/forge/version_manifests";
+const FORGE_MULTIMC_INSTALLER_MANIFEST_BASE: &str =
+    "https://raw.githubusercontent.com/MultiMC/meta-upstream/master/forge/installer_manifests";
+const FORGE_MAVEN_BASE: &str = "https://maven.minecraftforge.net";
 const USER_AGENT: &str = "minecraft-mod-like-im-five/0.1";
 
 // Curated profiles are embedded at compile time as a fallback. The runtime
@@ -993,6 +1006,173 @@ async fn install_neoforge(
     Ok((nf_version, version_id))
 }
 
+// Pick the recommended Forge build for an MC version, falling back to the
+// latest build if no recommended exists. promotions_slim.json keys look like
+// "1.12.2-recommended" / "1.12.2-latest"; the value is the Forge version
+// string e.g. "14.23.5.2859".
+async fn forge_pick_version(
+    client: &reqwest::Client,
+    mc_version: &str,
+) -> Result<String, String> {
+    let resp: Value = client
+        .get(FORGE_PROMOTIONS_URL)
+        .header(reqwest::header::USER_AGENT, USER_AGENT)
+        .send()
+        .await
+        .map_err(|e| format!("forge promotions: {e}"))?
+        .json()
+        .await
+        .map_err(|e| format!("forge promotions json: {e}"))?;
+    let promos = resp
+        .get("promos")
+        .and_then(|p| p.as_object())
+        .ok_or("forge promotions missing 'promos' object")?;
+    let rec_key = format!("{mc_version}-recommended");
+    let latest_key = format!("{mc_version}-latest");
+    if let Some(v) = promos.get(&rec_key).and_then(|v| v.as_str()) {
+        return Ok(v.to_string());
+    }
+    if let Some(v) = promos.get(&latest_key).and_then(|v| v.as_str()) {
+        return Ok(v.to_string());
+    }
+    Err(format!("No Forge build promoted for MC {mc_version}"))
+}
+
+// Classic Forge install without running the installer JAR. We materialize
+// versions/<id>/<id>.json and download libraries directly using MultiMC's
+// pre-extracted manifests. Works cleanly for 1.12.2 and earlier where the
+// installer's processors[] array is empty; for Forge 1.13+ (which uses a
+// patcher pipeline) we bail out — those eras have NeoForge as a saner
+// modern alternative.
+//
+// Java is the Mojang launcher's problem: the version manifest declares
+// inheritsFrom: "1.12.2", and vanilla 1.12.2's manifest already pins
+// javaVersion.component=jre-legacy. The launcher auto-downloads Java 8 on
+// first Play, so we don't need to detect or bundle it ourselves.
+async fn install_forge(
+    app: &AppHandle,
+    client: &reqwest::Client,
+    mc_version: &str,
+    mc_dir: &Path,
+) -> Result<(String, String), String> {
+    emit_progress(app, "Resolving Forge version...", "info");
+    let forge_version = forge_pick_version(client, mc_version).await?;
+    emit_progress(app, format!("Forge {forge_version}"), "ok");
+
+    // Sanity-check the installer manifest — processors must be empty for
+    // the "skip the installer" path to be safe. Non-empty means we'd need
+    // to run the patcher pipeline ourselves (significant new code).
+    let inst_url =
+        format!("{FORGE_MULTIMC_INSTALLER_MANIFEST_BASE}/{mc_version}-{forge_version}.json");
+    emit_progress(app, "Fetching Forge installer manifest...", "info");
+    let inst_resp = client
+        .get(&inst_url)
+        .header(reqwest::header::USER_AGENT, USER_AGENT)
+        .send()
+        .await
+        .map_err(|e| format!("forge installer manifest: {e}"))?;
+    if !inst_resp.status().is_success() {
+        return Err(format!(
+            "MultiMC meta-upstream has no installer manifest for Forge {forge_version} on MC {mc_version} (HTTP {})",
+            inst_resp.status()
+        ));
+    }
+    let inst: Value = inst_resp
+        .json()
+        .await
+        .map_err(|e| format!("forge installer manifest json: {e}"))?;
+    if let Some(procs) = inst.get("processors").and_then(|p| p.as_array()) {
+        if !procs.is_empty() {
+            return Err(format!(
+                "Forge {forge_version} for MC {mc_version} ships installer processors \
+                 (the Forge 1.13+ patcher pipeline), which this launcher doesn't yet \
+                 handle. Pin the profile to a 1.12.2-era Forge build, or pick NeoForge \
+                 for modern MC versions."
+            ));
+        }
+    }
+
+    // Fetch the version manifest — this becomes versions/<id>/<id>.json.
+    let ver_url =
+        format!("{FORGE_MULTIMC_VERSION_MANIFEST_BASE}/{mc_version}-{forge_version}.json");
+    emit_progress(app, "Fetching Forge version manifest...", "info");
+    let ver_resp = client
+        .get(&ver_url)
+        .header(reqwest::header::USER_AGENT, USER_AGENT)
+        .send()
+        .await
+        .map_err(|e| format!("forge version manifest: {e}"))?;
+    if !ver_resp.status().is_success() {
+        return Err(format!(
+            "MultiMC meta-upstream has no version manifest for Forge {forge_version} on MC {mc_version} (HTTP {})",
+            ver_resp.status()
+        ));
+    }
+    let ver: Value = ver_resp
+        .json()
+        .await
+        .map_err(|e| format!("forge version manifest json: {e}"))?;
+
+    let version_id = ver
+        .get("id")
+        .and_then(|v| v.as_str())
+        .ok_or("forge version manifest missing 'id'")?
+        .to_string();
+
+    // Download libraries. The Forge artifact itself ships with an empty
+    // artifact.url; the convention is to construct the URL from maven path
+    // against the Forge maven base. For all other libs the URL is filled.
+    let libraries = ver
+        .get("libraries")
+        .and_then(|l| l.as_array())
+        .cloned()
+        .ok_or("forge version manifest missing 'libraries' array")?;
+    let libs_dir = mc_dir.join("libraries");
+    fs::create_dir_all(&libs_dir).map_err(|e| format!("mkdir libraries: {e}"))?;
+    emit_progress(
+        app,
+        format!("Downloading {} Forge libraries...", libraries.len()),
+        "info",
+    );
+    for lib in &libraries {
+        let artifact = lib
+            .get("downloads")
+            .and_then(|d| d.get("artifact"))
+            .ok_or_else(|| format!("library missing 'downloads.artifact': {lib}"))?;
+        let path = artifact
+            .get("path")
+            .and_then(|v| v.as_str())
+            .ok_or("library artifact missing 'path'")?;
+        let sha1 = artifact.get("sha1").and_then(|v| v.as_str());
+        let url_raw = artifact.get("url").and_then(|v| v.as_str()).unwrap_or("");
+        let url = if url_raw.is_empty() {
+            format!("{FORGE_MAVEN_BASE}/{path}")
+        } else {
+            url_raw.to_string()
+        };
+        let dest = libs_dir.join(path);
+        download_to_if_missing(app, client, &url, &dest, sha1).await?;
+    }
+
+    // Write versions/<id>/<id>.json. The inheritsFrom field tells the
+    // Mojang launcher to merge in vanilla MC's manifest, which gives us
+    // the vanilla libraries, assets, and the jre-legacy hint for free.
+    let version_dir = mc_dir.join("versions").join(&version_id);
+    fs::create_dir_all(&version_dir)
+        .map_err(|e| format!("mkdir {}: {e}", version_dir.display()))?;
+    let version_json_path = version_dir.join(format!("{version_id}.json"));
+    let pretty = serde_json::to_vec_pretty(&ver).map_err(|e| e.to_string())?;
+    fs::write(&version_json_path, pretty)
+        .map_err(|e| format!("write {}: {e}", version_json_path.display()))?;
+    emit_progress(
+        app,
+        format!("Wrote {}", version_json_path.display()),
+        "ok",
+    );
+
+    Ok((forge_version, version_id))
+}
+
 // Install a Modrinth-format modpack (.mrpack). Downloads the pack, extracts
 // the manifest, installs the loader the manifest demands, fetches every
 // file in the manifest's files[] list to its declared path, and copies
@@ -1663,7 +1843,7 @@ async fn download_to(
 //   fabric-loader-<loader>-<mc>           e.g. fabric-loader-0.16.10-1.21.9
 //   quilt-loader-<loader>-<mc>            e.g. quilt-loader-0.27.0-1.21.1
 //   neoforge-<neoforge-ver>               e.g. neoforge-21.1.95         (mc inferred via NeoForge version family)
-//   forge-<mc>-<forge-ver>                e.g. forge-1.21.1-52.0.40
+//   <mc>-forge-<forge-ver>                e.g. 1.12.2-forge-14.23.5.2859    (MultiMC meta-upstream naming, which our install_forge() writes)
 fn detect_existing_loader_version(
     mc_dir: &Path,
     loader: &str,
@@ -1697,7 +1877,10 @@ fn detect_existing_loader_version(
                 // accept any neoforge-* and let the launcher_profiles.json
                 // record do the binding. This is a soft check.
                 "neoforge" => lower.starts_with("neoforge-"),
-                "forge" => lower.starts_with(&format!("forge-{mc_version}-")),
+                // Forge version IDs from the MultiMC manifest are of the
+                // shape "1.12.2-forge-14.23.5.2859" — MC version first,
+                // then "-forge-", then the Forge build.
+                "forge" => lower.starts_with(&format!("{mc_version}-forge-")),
                 _ => false,
             }
         })
@@ -2082,7 +2265,7 @@ async fn install_profile(
         .loader
         .clone()
         .ok_or("profile has no `loader` and no `modpack` field")?;
-    if loader_name != "fabric" && loader_name != "neoforge" {
+    if loader_name != "fabric" && loader_name != "neoforge" && loader_name != "forge" {
         return Err(format!(
             "Unsupported loader '{}' on profile '{}'.",
             loader_name, profile.name
@@ -2148,6 +2331,20 @@ async fn install_profile(
                 ("(existing)".to_string(), existing)
             } else {
                 install_neoforge(&app, &client, &mc_version, &mc_dir, None).await?
+            }
+        }
+        "forge" => {
+            if let Some(existing) =
+                detect_existing_loader_version(&mc_dir, "forge", mc_version.as_str())
+            {
+                emit_progress(
+                    &app,
+                    format!("Using existing Forge install: {existing} (skipping manifest fetch)"),
+                    "ok",
+                );
+                ("(existing)".to_string(), existing)
+            } else {
+                install_forge(&app, &client, &mc_version, &mc_dir).await?
             }
         }
         _ => unreachable!("loader gate above rejects everything else"),
