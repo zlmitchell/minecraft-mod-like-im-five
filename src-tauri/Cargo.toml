@@ -27,6 +27,13 @@ dirs = "5"
 sysinfo = "0.32"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 
+# Not used directly. Pinned to dodge a coherence regression introduced in
+# `time` 0.3.48 (a new `From<HourBase>` impl conflicts with the blanket
+# `From<T: Into<Option<OffsetDateTime>>>` in `cookie` and the `From<T: Into<Number>>`
+# in `tauri-utils`). 0.3.36 is the last release before the regression.
+# Drop this once cookie/tauri-utils ship a fix or the time crate reverts.
+time = "=0.3.36"
+
 [profile.dev]
 opt-level = 0
 

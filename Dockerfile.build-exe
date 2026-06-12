@@ -7,7 +7,13 @@
 # (or use scripts/build-exe.ps1 / scripts/build-exe.sh)
 
 # -- builder stage ------------------------------------------------------------
-FROM rust:slim-bookworm AS builder
+# Pin the Rust toolchain so the floating `rust:slim-bookworm` tag can't
+# silently drift and break the build. 1.89 is the sweet spot today: low
+# enough for tauri-utils 2.9.2 to compile, high enough that cargo-xwin
+# 0.22+ and transitive crates (time 0.3.48+, serde_with_macros 3.21+)
+# accept it. Bump along with src-tauri/Cargo.toml's rust-version when
+# raising MSRV.
+FROM rust:1.89-slim-bookworm AS builder
 
 ENV XWIN_ACCEPT_LICENSE=1
 ENV DEBIAN_FRONTEND=noninteractive
