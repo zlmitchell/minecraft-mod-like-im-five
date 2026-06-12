@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/zlmitchell/minecraft-mod-like-im-five/compare/v1.2.1...v1.3.0) (2026-06-12)
+
+
+### Features
+
+* **prehistoric-era:** wire LLibrary 1.7.20 via new curseforge mod source ([654eda9](https://github.com/zlmitchell/minecraft-mod-like-im-five/commit/654eda9d5cd3b7e40d97913495ae6a16f7a6c17f))
+
 ## [1.2.1](https://github.com/zlmitchell/minecraft-mod-like-im-five/compare/v1.2.0...v1.2.1) (2026-06-12)
 
 
