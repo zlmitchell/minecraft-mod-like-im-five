@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.2.0](https://github.com/zlmitchell/minecraft-mod-like-im-five/compare/v1.1.0...v1.2.0) (2026-06-12)
+
+
+### Features
+
+* **forge:** support classic Forge via MultiMC manifests + Prehistoric Era profile ([0fa5508](https://github.com/zlmitchell/minecraft-mod-like-im-five/commit/0fa5508b33db34409158de778bc00be6a94be8b2))
+* **profiles:** add Jurassic Era profile ([a202d6b](https://github.com/zlmitchell/minecraft-mod-like-im-five/commit/a202d6b866fe9c168aea239e878a9912bb1522b5))
+
+
+### Bug Fixes
+
+* **rising-legends:** supplement FTB Library Fabric to satisfy FTB Teams dep ([53d413c](https://github.com/zlmitchell/minecraft-mod-like-im-five/commit/53d413c4e2a824e96c610feab8cf6ffd8cfcb8c7))
+
 ## [1.1.0](https://github.com/zlmitchell/minecraft-mod-like-im-five/compare/v1.0.1...v1.1.0) (2026-05-09)
 
 
