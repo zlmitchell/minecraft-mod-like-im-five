@@ -1135,6 +1135,7 @@ async fn install_forge(
         "info",
     );
     for lib in &libraries {
+        let name = lib.get("name").and_then(|v| v.as_str()).unwrap_or("");
         let artifact = lib
             .get("downloads")
             .and_then(|d| d.get("artifact"))
@@ -1145,10 +1146,19 @@ async fn install_forge(
             .ok_or("library artifact missing 'path'")?;
         let sha1 = artifact.get("sha1").and_then(|v| v.as_str());
         let url_raw = artifact.get("url").and_then(|v| v.as_str()).unwrap_or("");
-        let url = if url_raw.is_empty() {
-            format!("{FORGE_MAVEN_BASE}/{path}")
-        } else {
+        let url = if !url_raw.is_empty() {
             url_raw.to_string()
+        } else if name.starts_with("net.minecraftforge:forge:") {
+            // The Forge main artifact is actually published with a `-universal`
+            // classifier on maven.minecraftforge.net — the MultiMC manifest
+            // deliberately drops the classifier so the launcher saves it to
+            // an unambiguous filename, expecting the loader to know to pull
+            // the universal jar. Save to the non-classifier path but fetch
+            // the universal one; sha1 verifies the bytes are right.
+            let universal = path.replace(".jar", "-universal.jar");
+            format!("{FORGE_MAVEN_BASE}/{universal}")
+        } else {
+            format!("{FORGE_MAVEN_BASE}/{path}")
         };
         let dest = libs_dir.join(path);
         download_to_if_missing(app, client, &url, &dest, sha1).await?;
