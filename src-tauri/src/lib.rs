@@ -2491,6 +2491,40 @@ async fn install_profile(
                     }
                 }
             }
+            "curseforge" => {
+                // Used for CurseForge-only mods that don't mirror to Modrinth
+                // (typically older or strict-license mods like LLibrary). Pin
+                // by file_id; we build the forgecdn URL ourselves so the YAML
+                // doesn't have to carry the gnarly /high/low/ math.
+                let file_id = match m.file_id {
+                    Some(id) => id,
+                    None => {
+                        skipped.push(format!("{display} (curseforge source missing file_id)"));
+                        continue;
+                    }
+                };
+                let filename = match &m.filename {
+                    Some(f) => f,
+                    None => {
+                        skipped.push(format!("{display} (curseforge source missing filename)"));
+                        continue;
+                    }
+                };
+                let url = curseforge_cdn_url(file_id, filename);
+                let dest = mods_dir.join(filename);
+                emit_progress(
+                    &app,
+                    format!("{filename} (curseforge file {file_id})"),
+                    "info",
+                );
+                match download_to_if_missing(&app, &client, &url, &dest, None).await {
+                    Ok(_) => installed += 1,
+                    Err(e) => {
+                        skipped.push(format!("{filename} ({e})"));
+                        emit_progress(&app, format!("Skip {filename}: {e}"), "warn");
+                    }
+                }
+            }
             other => {
                 skipped.push(format!("{display} (unsupported source: {other})"));
                 emit_progress(&app, format!("Skip {display}: unknown source {other}"), "warn");

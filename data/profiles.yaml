@@ -217,6 +217,10 @@ profiles:
     # Forge via the MultiMC meta-upstream manifests (no GUI installer), and
     # the Mojang launcher auto-downloads jre-legacy (Java 8) on first Play
     # via the version JSON's inheritsFrom: "1.12.2".
+    # CurseForge tracks two required deps for Prehistoric Nature 63.02:
+    # LLibrary (1.7.19+) and Patchouli. LLibrary is CurseForge-only, so we
+    # pin its file_id; Patchouli is mirrored to Modrinth.
     mods:
-      - { source: modrinth, slug: prehistoric-nature,     role: content }
-      - { source: modrinth, slug: patchouli,              role: required }   # Prehistoric Nature dep
+      - { source: modrinth,    slug: prehistoric-nature, role: content }
+      - { source: modrinth,    slug: patchouli,          role: required }   # Vazkii — Modrinth-mirrored
+      - { source: curseforge,  file_id: 3116493,         filename: llibrary-1.7.20-1.12.2.jar, role: required }   # iLexiconn — CurseForge-only
