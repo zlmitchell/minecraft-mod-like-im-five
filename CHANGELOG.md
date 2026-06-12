@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.1](https://github.com/zlmitchell/minecraft-mod-like-im-five/compare/v1.2.0...v1.2.1) (2026-06-12)
+
+
+### Bug Fixes
+
+* **forge:** fetch Forge main artifact from -universal classifier on maven ([2c6ef77](https://github.com/zlmitchell/minecraft-mod-like-im-five/commit/2c6ef7781e75da150f9ac0f7dbcc388dd2143764))
+
 ## [1.2.0](https://github.com/zlmitchell/minecraft-mod-like-im-five/compare/v1.1.0...v1.2.0) (2026-06-12)
 
 
