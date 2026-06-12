@@ -181,3 +181,25 @@ profiles:
       - { source: modrinth, slug: jade,                   role: ui }
       - { source: modrinth, slug: xaeros-minimap,         role: ui }
       - { source: modrinth, slug: appleskin,              role: ui }
+
+  - id: jurassic-era
+    name: Jurassic Era
+    short_description: Dinosaurs and prehistoric wildlife — Jurassic Reborn plus Naturalist ambient fauna
+    minecraft_version: "1.21.1"
+    loader: neoforge
+    color: "#c47a1c"
+    icon: Pumpkin
+    java_xmx_gb: 8
+    # Prehistoric Nature (the mod originally requested) is Forge 1.12.2 only;
+    # no Fabric/NeoForge port exists. Jurassic Reborn is the most current
+    # dinosaur mod on NeoForge 1.21.1 (large roster, active development).
+    # Paired with Naturalist so the modern fauna fills in the background.
+    mods:
+      - { source: modrinth, slug: jurassic-reborn,        role: content }
+      - { source: modrinth, slug: naturalist,             role: content }
+      - { source: modrinth, slug: citadel,                role: required }   # Jurassic Reborn dep
+      - { source: modrinth, slug: geckolib,               role: required }   # Jurassic Reborn + Naturalist dep
+      - { source: modrinth, slug: jei,                    role: ui }
+      - { source: modrinth, slug: jade,                   role: ui }
+      - { source: modrinth, slug: xaeros-minimap,         role: ui }
+      - { source: modrinth, slug: appleskin,              role: ui }
