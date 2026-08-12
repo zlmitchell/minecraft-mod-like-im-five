@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0](https://github.com/zlmitchell/minecraft-mod-like-im-five/compare/v1.3.0...v1.4.0) (2026-08-12)
+
+
+### Features
+
+* **more-critters:** add More Critters profile on Forge 1.20.1 ([02a1e7e](https://github.com/zlmitchell/minecraft-mod-like-im-five/commit/02a1e7e68fafa7d3e4e18af0d2e8b339ed25515f))
+
 ## [1.3.0](https://github.com/zlmitchell/minecraft-mod-like-im-five/compare/v1.2.1...v1.3.0) (2026-06-12)
 
 
