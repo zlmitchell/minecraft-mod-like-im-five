@@ -913,43 +913,52 @@ fn find_neoforge_version_id(mc_dir: &Path, nf_version: &str) -> Option<String> {
     None
 }
 
-async fn install_neoforge(
+// Same idea for Forge's own installer, which names its folder
+// `<mc>-forge-<build>` (e.g. 1.20.1-forge-47.4.10).
+fn find_forge_version_id(mc_dir: &Path, mc_version: &str, forge_version: &str) -> Option<String> {
+    let versions_dir = mc_dir.join("versions");
+    let exact = format!("{mc_version}-forge-{forge_version}");
+    if versions_dir.join(&exact).join(format!("{exact}.json")).exists() {
+        return Some(exact);
+    }
+    let rd = fs::read_dir(&versions_dir).ok()?;
+    for entry in rd.filter_map(|e| e.ok()) {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name.contains(forge_version) && name.to_ascii_lowercase().contains("forge") {
+            let json = entry.path().join(format!("{name}.json"));
+            if json.exists() {
+                return Some(name);
+            }
+        }
+    }
+    None
+}
+
+// NeoForge and modern Forge (1.13+) ship the same headless installer CLI
+// (`java -jar <installer> --installClient <mc_dir>`) — NeoForge's installer
+// is a fork of Forge's — so one runner serves both. `label` is only used in
+// the progress lines and error messages.
+async fn run_loader_installer(
     app: &AppHandle,
     client: &reqwest::Client,
-    mc_version: &str,
+    label: &str,
+    installer_url: &str,
+    installer_filename: &str,
     mc_dir: &Path,
-    // For modpacks: install the EXACT NeoForge version the .mrpack manifest
-    // demands. None = pick the latest stable for this MC version (cobblemon
-    // path).
-    nf_version_override: Option<&str>,
-) -> Result<(String, String), String> {
+) -> Result<(), String> {
     let java = find_java().ok_or_else(|| {
-        "Couldn't find Java. Open the Minecraft launcher once so it installs its bundled \
-         Java runtime, then try again. (NeoForge requires Java to run its installer.)"
-            .to_string()
+        format!(
+            "Couldn't find Java. Open the Minecraft launcher once so it installs its bundled \
+             Java runtime, then try again. ({label} requires Java to run its installer.)"
+        )
     })?;
     emit_progress(app, format!("Java: {}", java.display()), "info");
 
-    let nf_version = match nf_version_override {
-        Some(v) => {
-            emit_progress(app, format!("NeoForge {v} (from modpack manifest)"), "ok");
-            v.to_string()
-        }
-        None => {
-            emit_progress(app, "Resolving NeoForge version...", "info");
-            let v = neoforge_pick_version(client, mc_version).await?;
-            emit_progress(app, format!("NeoForge {v}"), "ok");
-            v
-        }
-    };
-
-    let installer_url =
-        format!("{NEOFORGE_MAVEN_BASE}/{nf_version}/neoforge-{nf_version}-installer.jar");
-    let temp_dir = std::env::temp_dir().join("mmle5-neoforge");
+    let temp_dir = std::env::temp_dir().join("mmle5-loader-installer");
     fs::create_dir_all(&temp_dir).map_err(|e| format!("mkdir temp: {e}"))?;
-    let installer = temp_dir.join(format!("neoforge-{nf_version}-installer.jar"));
-    emit_progress(app, "Downloading NeoForge installer...", "info");
-    download_to(client, &installer_url, &installer).await?;
+    let installer = temp_dir.join(installer_filename);
+    emit_progress(app, format!("Downloading {label} installer..."), "info");
+    download_to(client, installer_url, &installer).await?;
 
     // The installer needs a launcher_profiles.json to upsert into. On a fresh
     // install the file may not exist yet — make sure it does, with the minimum
@@ -964,7 +973,7 @@ async fn install_neoforge(
 
     emit_progress(
         app,
-        "Running NeoForge installer (this can take a minute)...",
+        format!("Running {label} installer (this can take a minute)..."),
         "info",
     );
     let mc_dir_str = mc_dir.to_string_lossy().to_string();
@@ -992,7 +1001,7 @@ async fn install_neoforge(
             lines[start..].join("\n")
         };
         return Err(format!(
-            "NeoForge installer failed (exit {:?}).\nstdout (tail):\n{}\nstderr (tail):\n{}",
+            "{label} installer failed (exit {:?}).\nstdout (tail):\n{}\nstderr (tail):\n{}",
             output.status.code(),
             tail(&stdout),
             tail(&stderr)
@@ -1000,6 +1009,44 @@ async fn install_neoforge(
     }
 
     let _ = fs::remove_file(&installer);
+    Ok(())
+}
+
+async fn install_neoforge(
+    app: &AppHandle,
+    client: &reqwest::Client,
+    mc_version: &str,
+    mc_dir: &Path,
+    // For modpacks: install the EXACT NeoForge version the .mrpack manifest
+    // demands. None = pick the latest stable for this MC version (cobblemon
+    // path).
+    nf_version_override: Option<&str>,
+) -> Result<(String, String), String> {
+    let nf_version = match nf_version_override {
+        Some(v) => {
+            emit_progress(app, format!("NeoForge {v} (from modpack manifest)"), "ok");
+            v.to_string()
+        }
+        None => {
+            emit_progress(app, "Resolving NeoForge version...", "info");
+            let v = neoforge_pick_version(client, mc_version).await?;
+            emit_progress(app, format!("NeoForge {v}"), "ok");
+            v
+        }
+    };
+
+    let installer_url =
+        format!("{NEOFORGE_MAVEN_BASE}/{nf_version}/neoforge-{nf_version}-installer.jar");
+    let installer_filename = format!("neoforge-{nf_version}-installer.jar");
+    run_loader_installer(
+        app,
+        client,
+        "NeoForge",
+        &installer_url,
+        &installer_filename,
+        mc_dir,
+    )
+    .await?;
 
     let version_id = find_neoforge_version_id(mc_dir, &nf_version)
         .ok_or_else(|| format!("NeoForge installer ran but no versions/* entry was created for {nf_version}"))?;
@@ -1038,12 +1085,12 @@ async fn forge_pick_version(
     Err(format!("No Forge build promoted for MC {mc_version}"))
 }
 
-// Classic Forge install without running the installer JAR. We materialize
-// versions/<id>/<id>.json and download libraries directly using MultiMC's
-// pre-extracted manifests. Works cleanly for 1.12.2 and earlier where the
-// installer's processors[] array is empty; for Forge 1.13+ (which uses a
-// patcher pipeline) we bail out — those eras have NeoForge as a saner
-// modern alternative.
+// Forge install. For 1.12.2 and earlier — where the installer's processors[]
+// array is empty — we skip the installer JAR entirely and materialize
+// versions/<id>/<id>.json plus the libraries straight from MultiMC's
+// pre-extracted manifests. For Forge 1.13+ the patcher pipeline lives in
+// those processors, so we fall back to running Forge's own headless
+// installer (see the processors check below).
 //
 // Java is the Mojang launcher's problem: the version manifest declares
 // inheritsFrom: "1.12.2", and vanilla 1.12.2's manifest already pins
@@ -1083,12 +1130,36 @@ async fn install_forge(
         .map_err(|e| format!("forge installer manifest json: {e}"))?;
     if let Some(procs) = inst.get("processors").and_then(|p| p.as_array()) {
         if !procs.is_empty() {
-            return Err(format!(
-                "Forge {forge_version} for MC {mc_version} ships installer processors \
-                 (the Forge 1.13+ patcher pipeline), which this launcher doesn't yet \
-                 handle. Pin the profile to a 1.12.2-era Forge build, or pick NeoForge \
-                 for modern MC versions."
-            ));
+            // Forge 1.13+ patcher pipeline. We can't replay it from the
+            // MultiMC manifests, so hand the job to Forge's own installer —
+            // same headless CLI as NeoForge's, which was forked from it.
+            emit_progress(
+                app,
+                format!(
+                    "Forge {forge_version} uses the 1.13+ patcher pipeline — running Forge's installer"
+                ),
+                "info",
+            );
+            let installer_filename = format!("forge-{mc_version}-{forge_version}-installer.jar");
+            let installer_url = format!(
+                "{FORGE_MAVEN_BASE}/net/minecraftforge/forge/{mc_version}-{forge_version}/{installer_filename}"
+            );
+            run_loader_installer(
+                app,
+                client,
+                "Forge",
+                &installer_url,
+                &installer_filename,
+                mc_dir,
+            )
+            .await?;
+            let version_id = find_forge_version_id(mc_dir, mc_version, &forge_version)
+                .ok_or_else(|| {
+                    format!(
+                        "Forge installer ran but no versions/* entry was created for {forge_version}"
+                    )
+                })?;
+            return Ok((forge_version, version_id));
         }
     }
 
@@ -1998,10 +2069,24 @@ fn enable_resource_pack(mc_dir: &Path, filename: &str) -> Result<(), String> {
 // Shader Packs → click → Apply just to see the shader they downloaded. We
 // pre-select the profile's default shader so the first launch already looks
 // pretty.
+//
+// Oculus (the Forge/NeoForge fork of Iris) reads the identical keys from
+// config/oculus.properties instead, so we write both files rather than
+// working out which of the two the profile installed. The unused one is an
+// inert 2-line file.
+const SHADER_LOADER_CONFIGS: [&str; 2] = ["iris.properties", "oculus.properties"];
+
 fn set_iris_default_shader(mc_dir: &Path, filename: &str) -> Result<(), String> {
+    for config_name in SHADER_LOADER_CONFIGS {
+        set_shader_properties(mc_dir, config_name, filename)?;
+    }
+    Ok(())
+}
+
+fn set_shader_properties(mc_dir: &Path, config_name: &str, filename: &str) -> Result<(), String> {
     let config_dir = mc_dir.join("config");
     fs::create_dir_all(&config_dir).map_err(|e| format!("mkdir config: {e}"))?;
-    let path = config_dir.join("iris.properties");
+    let path = config_dir.join(config_name);
     let mut props: BTreeMap<String, String> = BTreeMap::new();
     if let Ok(existing) = fs::read_to_string(&path) {
         for line in existing.lines() {
@@ -2024,7 +2109,7 @@ fn set_iris_default_shader(mc_dir: &Path, filename: &str) -> Result<(), String> 
     for (k, v) in &props {
         content.push_str(&format!("{k}={v}\n"));
     }
-    fs::write(&path, content).map_err(|e| format!("write iris.properties: {e}"))?;
+    fs::write(&path, content).map_err(|e| format!("write {config_name}: {e}"))?;
     Ok(())
 }
 
@@ -2617,13 +2702,16 @@ async fn install_profile(
     }
 
     if let Some(filename) = &default_shader_filename {
-        let iris_path = mc_dir.join("config").join("iris.properties");
         set_iris_default_shader(&mc_dir, filename)?;
         emit_progress(
             &app,
             format!(
-                "iris.properties -> {} (shaderPack={}, enableShaders=true)",
-                iris_path.display(),
+                "{} -> shaderPack={}, enableShaders=true",
+                SHADER_LOADER_CONFIGS
+                    .iter()
+                    .map(|n| mc_dir.join("config").join(n).display().to_string())
+                    .collect::<Vec<_>>()
+                    .join(" + "),
                 filename
             ),
             "ok",

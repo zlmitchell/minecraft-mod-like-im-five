@@ -204,6 +204,35 @@ profiles:
       - { source: modrinth, slug: xaeros-minimap,         role: ui }
       - { source: modrinth, slug: appleskin,              role: ui }
 
+  - id: more-critters
+    name: More Critters
+    short_description: Dozens of new animals and bugs, with Complementary shaders turned on
+    minecraft_version: "1.20.1"
+    loader: forge
+    color: "#8ab54a"
+    icon: Mycelium
+    java_xmx_gb: 6
+    # More Critters is Forge-only and caps at 1.20.1, so this profile pins
+    # that pair. Forge 1.20.1 uses the 1.13+ patcher pipeline, which means
+    # install_forge() runs Forge's real installer jar (needs Java present —
+    # the Mojang launcher's bundled runtime counts).
+    #
+    # Shaders on Forge need Oculus, not Iris (Iris is Fabric-only), and
+    # Oculus 1.8.0 hard-requires Embeddium as its renderer. Both are listed
+    # explicitly; without them Complementary sits unusable in shaderpacks/.
+    mods:
+      - { source: modrinth, slug: more-critters,   role: content }
+      - { source: modrinth, slug: geckolib,        role: required }   # More Critters animations
+      - { source: modrinth, slug: embeddium,       role: performance }  # Oculus dep
+      - { source: modrinth, slug: oculus,          role: shaders }      # Iris fork for Forge
+      - { source: modrinth, slug: jei,             role: ui }
+      - { source: modrinth, slug: jade,            role: ui }
+      - { source: modrinth, slug: xaeros-minimap,  role: ui }
+      - { source: modrinth, slug: appleskin,       role: ui }
+    shaders:
+      - { source: modrinth, slug: complementary-unbound, default: true }
+      - { source: modrinth, slug: complementary-reimagined }
+
   - id: prehistoric-era
     name: Prehistoric Era
     short_description: Aecht_Rob's Prehistoric Nature — 1000+ scientifically-accurate prehistoric creatures
