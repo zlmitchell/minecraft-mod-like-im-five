@@ -43,6 +43,7 @@ If you build on top of this, give Modrinth credit too.
 | Bleeding Edge Performance | latest (auto-resolved each install) | Fabric | Sodium suite + Lithium + FerriteCore + Entity Culling + ImmediatelyFast + ModernFix + Iris (no shader pack pre-selected) + JEI + Jade + Xaero's Minimap + AppleSkin + Continuity + LambDynamicLights + Faithful 32x |
 | Adventure with Cobblemon & Create | 1.21.1 | NeoForge | Cobblemon + Create + JEI + Jade + Xaero's Minimap + AppleSkin + GeckoLib (uses the Minecraft launcher's bundled Java to run the NeoForge installer) |
 | More Critters | 1.20.1 | Forge | More Critters + GeckoLib + Oculus + Embeddium + Complementary Unbound (auto-enabled) & Reimagined + JEI + Jade + Xaero's Minimap + AppleSkin (uses the Minecraft launcher's bundled Java to run the Forge installer) |
+| A World of Strangeness | 1.20.1 | Forge | Hedge's Bestiary + Alex's Mobs + Citadel + Patchouli + JEI + Jade + Xaero's Minimap + AppleSkin (uses the Minecraft launcher's bundled Java to run the Forge installer) |
 
 ## Using it
 

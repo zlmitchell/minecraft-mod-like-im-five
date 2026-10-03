@@ -38,6 +38,7 @@ profiles:
       - { source: modrinth, slug: yacl,                   role: required }
       - { source: modrinth, slug: modmenu,                role: ui }
       - { source: modrinth, slug: jei,                    role: ui }
+      - { source: modrinth, slug: mezzconfig,             role: required }   # JEI dep (since JEI 19.57 / 15.62)
       - { source: modrinth, slug: jade,                   role: ui }
       - { source: modrinth, slug: xaeros-minimap,         role: ui }
       - { source: modrinth, slug: appleskin,              role: ui }
@@ -127,6 +128,7 @@ profiles:
       - { source: modrinth, slug: cobblemon,        role: content }
       - { source: modrinth, slug: create,           role: content }
       - { source: modrinth, slug: jei,              role: ui }
+      - { source: modrinth, slug: mezzconfig,       role: required }   # JEI dep (since JEI 19.57 / 15.62)
       - { source: modrinth, slug: jade,             role: ui }
       - { source: modrinth, slug: xaeros-minimap,   role: ui }
       - { source: modrinth, slug: appleskin,        role: ui }
@@ -134,7 +136,7 @@ profiles:
 
   - id: morpho
     name: Morpho
-    short_description: Turn into any creature — Identity morphing across Alex's Mobs' 85+ animals
+    short_description: Turn into any creature — Identity-style morphing across Alex's Mobs' 85+ animals
     minecraft_version: "1.21.1"
     loader: neoforge
     color: "#3b6dd8"
@@ -142,20 +144,27 @@ profiles:
     java_xmx_gb: 8
     # Slug notes:
     #   identity            — original Draylar mod, FABRIC ONLY. Don't use.
-    #   identity-fix        — cross-loader fork; ships a NeoForge 1.21.1 build.
+    #   identity-fix        — cross-loader fork; REMOVED from Modrinth (2026-10),
+    #                         along with its gabous-libs dep.
+    #   remorphed           — Identity-style "kill to unlock, then morph" built on
+    #                         Woodwalkers. Its last 1.21.1 build (4.2, 2024-09) was
+    #                         compiled against Woodwalkers 5.2; checked against
+    #                         5.8.13 by bytecode — every Woodwalkers/CraftedCore
+    #                         call still resolves, and its mixins hit vanilla only.
     #   alexs-mobs          — official; caps at 1.20.1.
     #   alexs-mobs(1.21.1)  — Raguto's community port for NeoForge 1.21.1.
     #                         Requires its OWN port of Citadel (paren slug below).
     # If/when the official Alex's Mobs ships 1.21.1, swap to slug `alexs-mobs`
     # + `citadel` and drop the (1.21.1-port) versions.
     mods:
-      - { source: modrinth, slug: identity-fix,           role: content }
+      - { source: modrinth, slug: remorphed,              role: content }
       - { source: modrinth, slug: "alexs-mobs(1.21.1)",   role: content }
       - { source: modrinth, slug: "citadel-(1.21.1-port)", role: required }   # Alex's Mobs port dep
-      - { source: modrinth, slug: architectury-api,       role: required }   # Identity Fix dep
-      - { source: modrinth, slug: gabous-libs,            role: required }   # Identity Fix dep
+      - { source: modrinth, slug: woodwalkers,            role: required }   # ReMorphed dep
+      - { source: modrinth, slug: crafted-core,           role: required }   # ReMorphed + Woodwalkers dep
       - { source: modrinth, slug: geckolib,               role: required }
       - { source: modrinth, slug: jei,                    role: ui }
+      - { source: modrinth, slug: mezzconfig,             role: required }   # JEI dep (since JEI 19.57 / 15.62)
       - { source: modrinth, slug: jade,                   role: ui }
       - { source: modrinth, slug: xaeros-minimap,         role: ui }
       - { source: modrinth, slug: appleskin,              role: ui }
@@ -177,7 +186,10 @@ profiles:
       - { source: modrinth, slug: critters-and-companions, role: content }
       - { source: modrinth, slug: boks-butterflies,       role: content }
       - { source: modrinth, slug: geckolib,               role: required }   # Naturalist animations
+      - { source: modrinth, slug: yacl,                   role: required }   # Critters and Companions dep
+      - { source: modrinth, slug: architectury-api,       role: required }   # Critters and Companions dep
       - { source: modrinth, slug: jei,                    role: ui }
+      - { source: modrinth, slug: mezzconfig,             role: required }   # JEI dep (since JEI 19.57 / 15.62)
       - { source: modrinth, slug: jade,                   role: ui }
       - { source: modrinth, slug: xaeros-minimap,         role: ui }
       - { source: modrinth, slug: appleskin,              role: ui }
@@ -200,6 +212,7 @@ profiles:
       - { source: modrinth, slug: citadel,                role: required }   # Jurassic Reborn dep
       - { source: modrinth, slug: geckolib,               role: required }   # Jurassic Reborn + Naturalist dep
       - { source: modrinth, slug: jei,                    role: ui }
+      - { source: modrinth, slug: mezzconfig,             role: required }   # JEI dep (since JEI 19.57 / 15.62)
       - { source: modrinth, slug: jade,                   role: ui }
       - { source: modrinth, slug: xaeros-minimap,         role: ui }
       - { source: modrinth, slug: appleskin,              role: ui }
@@ -226,12 +239,37 @@ profiles:
       - { source: modrinth, slug: embeddium,       role: performance }  # Oculus dep
       - { source: modrinth, slug: oculus,          role: shaders }      # Iris fork for Forge
       - { source: modrinth, slug: jei,             role: ui }
+      - { source: modrinth, slug: mezzconfig,      role: required }   # JEI dep (since JEI 19.57 / 15.62)
       - { source: modrinth, slug: jade,            role: ui }
       - { source: modrinth, slug: xaeros-minimap,  role: ui }
       - { source: modrinth, slug: appleskin,       role: ui }
     shaders:
       - { source: modrinth, slug: complementary-unbound, default: true }
       - { source: modrinth, slug: complementary-reimagined }
+
+  - id: world-of-strangeness
+    name: A World of Strangeness
+    short_description: Mythical beasts and bizarre wildlife — Hedge's Bestiary plus Alex's Mobs
+    minecraft_version: "1.20.1"
+    loader: forge
+    color: "#7b4fa8"
+    icon: Enchanting_Table
+    java_xmx_gb: 6
+    # Hedge's Bestiary is Forge 1.20.1 only. Spectacular Mobs of Peligoro was
+    # the requested partner, but it's NeoForge 26.1 only (and CurseForge-only),
+    # so it can't share an instance; Alex's Mobs fills that slot instead.
+    # Hedge's Bestiary only hard-requires Forge; Patchouli is optional and
+    # adds its guidebook.
+    mods:
+      - { source: modrinth, slug: hedges-bestiary, role: content }
+      - { source: modrinth, slug: alexs-mobs,      role: content }
+      - { source: modrinth, slug: citadel,         role: required }   # Alex's Mobs dep
+      - { source: modrinth, slug: patchouli,       role: ui }         # Hedge's Bestiary guidebook (optional dep)
+      - { source: modrinth, slug: jei,             role: ui }
+      - { source: modrinth, slug: mezzconfig,      role: required }   # JEI dep (since JEI 19.57 / 15.62)
+      - { source: modrinth, slug: jade,            role: ui }
+      - { source: modrinth, slug: xaeros-minimap,  role: ui }
+      - { source: modrinth, slug: appleskin,       role: ui }
 
   - id: prehistoric-era
     name: Prehistoric Era
