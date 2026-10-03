@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.0](https://github.com/zlmitchell/minecraft-mod-like-im-five/compare/v1.4.0...v1.5.0) (2026-10-03)
+
+
+### Features
+
+* **world-of-strangeness:** add A World of Strangeness profile on Forge 1.20.1 ([bc28b6d](https://github.com/zlmitchell/minecraft-mod-like-im-five/commit/bc28b6da40e2964c1e8e75f63c4196f339b4c5c0))
+
 ## [1.4.0](https://github.com/zlmitchell/minecraft-mod-like-im-five/compare/v1.3.0...v1.4.0) (2026-08-12)
 
 
